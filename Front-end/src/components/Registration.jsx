@@ -1,50 +1,79 @@
 import React from "react";
+import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
 
 const Registration = () => {
+  const navigate = useNavigate();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
+
+  const onSubmit = (data) => {
+    console.log("Registration Data:", data);
+    navigate("/login"); // Redirect to login after successful registration
+  };
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg max-w-4xl w-full flex">
         {/* Left Section - Form */}
         <div className="w-1/2 p-6">
           <h2 className="text-2xl font-bold mb-4">Create your account</h2>
-          <p className="text-gray-600 mb-6">
-            Sign up to get started with our platform
-          </p>
+          <p className="text-gray-600 mb-6">Sign up to get started with our platform</p>
+
+          {/* Google Sign Up */}
           <button className="w-full py-2 border rounded-md flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 mb-4">
             <img src="/google-icon.png" alt="Google" className="w-5 h-5" />
             Sign up with Google
           </button>
+
           <div className="text-center text-gray-400 mb-4">or</div>
-          <form>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit(onSubmit)}>
             <input
+              {...register("fullName", { required: "Full Name is required" })}
               type="text"
               placeholder="Full Name"
-              className="w-full p-2 mb-4 border rounded-md"
+              className="w-full p-2 mb-2 border rounded-md"
             />
+            {errors.fullName && <p className="text-red-500 text-sm">{errors.fullName.message}</p>}
+
             <input
+              {...register("email", { required: "Email is required", pattern: { value: /^\S+@\S+$/i, message: "Invalid email address" } })}
               type="email"
               placeholder="Email Address"
-              className="w-full p-2 mb-4 border rounded-md"
+              className="w-full p-2 mb-2 border rounded-md"
             />
+            {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
+
             <input
+              {...register("password", { required: "Password is required", minLength: { value: 6, message: "Password must be at least 6 characters" } })}
               type="password"
               placeholder="Password"
-              className="w-full p-2 mb-4 border rounded-md"
+              className="w-full p-2 mb-2 border rounded-md"
             />
+            {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
+
             <input
+              {...register("confirmPassword", { required: "Confirm Password is required" })}
               type="password"
               placeholder="Confirm Password"
-              className="w-full p-2 mb-4 border rounded-md"
+              className="w-full p-2 mb-2 border rounded-md"
             />
-            <button className="w-full bg-black text-white py-2 rounded-md">
-              Sign Up
-            </button>
+            {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>}
+
+            <button type="submit" className="w-full bg-black text-white py-2 rounded-md">Sign Up</button>
           </form>
+
+          {/* Navigate to Login */}
           <p className="text-center text-gray-600 mt-4">
             Already have an account?{" "}
-            <a href="#" className="text-black font-semibold">
+            <span onClick={() => navigate("/login")} className="text-black font-semibold cursor-pointer">
               Login Here
-            </a>
+            </span>
           </p>
         </div>
 
@@ -52,17 +81,13 @@ const Registration = () => {
         <div className="w-1/2 flex items-center justify-center bg-gradient-to-r from-purple-400 to-blue-400 rounded-r-2xl p-6">
           <div className="text-center text-white">
             <h3 className="text-xl font-bold">Join Us Today!</h3>
-            <p className="text-sm text-gray-200">
-              Start managing your business efficiently
-            </p>
+            <p className="text-sm text-gray-200">Start managing your business efficiently</p>
             <div className="flex justify-center mt-4">
               <div className="w-8 h-16 bg-yellow-300 mx-1"></div>
               <div className="w-8 h-24 bg-blue-300 mx-1"></div>
               <div className="w-8 h-12 bg-white mx-1"></div>
             </div>
-            <p className="mt-6 text-sm text-gray-200">
-              “Experience the best tools for business growth.”
-            </p>
+            <p className="mt-6 text-sm text-gray-200">“Experience the best tools for business growth.”</p>
           </div>
         </div>
       </div>

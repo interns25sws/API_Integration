@@ -1,14 +1,14 @@
 
-import Login from './components/Login'
-import Registration from './components/Registration'
+
+import Routing from './utils/Routing'
 
 function App() {
  
 
   return (
     <>
-     <Login />
-     <Registration/>
+     <Routing/>
+   
     </>
   )
 }

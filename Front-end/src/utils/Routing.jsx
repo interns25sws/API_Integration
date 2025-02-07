@@ -1,13 +1,16 @@
-import React from 'react'
-import { Routes } from 'react-router-dom'
-import Login from '../components/Login'
+import {  Routes, Route, Navigate } from "react-router-dom";
+import Login from "../components/Login";
+import Registration from "../components/Registration";
 
-function Routing() {
+const Routing = () => {
   return (
-    <div>
-      <Routes path="/" element={<Login />}></Routes>
-    </div>
-  )
-}
+      <Routes>
+        {/* Default route redirects to login */}
+        <Route path="/" element={<Navigate to="/login" />} />
+        <Route path="/login" element={<Login/>} />
+        <Route path="/register" element={<Registration/>} />
+      </Routes>
+  );
+};
 
-export default Routing
+export default Routing;
