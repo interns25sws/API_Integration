@@ -1,6 +1,7 @@
 import React from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const Registration = () => {
   const navigate = useNavigate();
@@ -10,9 +11,14 @@ const Registration = () => {
     formState: { errors },
   } = useForm();
 
-  const onSubmit = (data) => {
-    console.log("Registration Data:", data);
-    navigate("/login"); // Redirect to login after successful registration
+  const onSubmit = async (data) => {
+    try {
+      const response = await axios.post("http://localhost:5000/api/auth/register", data);
+      alert(response.data.message);
+      navigate("/login"); // Redirect to login page after success
+    } catch (error) {
+      alert(error.response?.data?.message || "Registration failed");
+    }
   };
 
   return (
@@ -23,15 +29,6 @@ const Registration = () => {
           <h2 className="text-2xl font-bold mb-4">Create your account</h2>
           <p className="text-gray-600 mb-6">Sign up to get started with our platform</p>
 
-          {/* Google Sign Up */}
-          <button className="w-full py-2 border rounded-md flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 mb-4">
-            <img src="/google-icon.png" alt="Google" className="w-5 h-5" />
-            Sign up with Google
-          </button>
-
-          <div className="text-center text-gray-400 mb-4">or</div>
-
-          {/* Form */}
           <form onSubmit={handleSubmit(onSubmit)}>
             <input
               {...register("fullName", { required: "Full Name is required" })}
@@ -82,12 +79,6 @@ const Registration = () => {
           <div className="text-center text-white">
             <h3 className="text-xl font-bold">Join Us Today!</h3>
             <p className="text-sm text-gray-200">Start managing your business efficiently</p>
-            <div className="flex justify-center mt-4">
-              <div className="w-8 h-16 bg-yellow-300 mx-1"></div>
-              <div className="w-8 h-24 bg-blue-300 mx-1"></div>
-              <div className="w-8 h-12 bg-white mx-1"></div>
-            </div>
-            <p className="mt-6 text-sm text-gray-200">“Experience the best tools for business growth.”</p>
           </div>
         </div>
       </div>
