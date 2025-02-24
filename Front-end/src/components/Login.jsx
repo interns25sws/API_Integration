@@ -112,7 +112,7 @@ const Login = () => {
             <p className="text-sm text-gray-200">Total sales last month</p>
             <div className="flex justify-center mt-4">
               <div className="w-8 h-16 bg-yellow-300 mx-1"></div>
-              <div className="w-8 h-24 bg-blue-300 mx-1"></div>
+              <div className="w-8 h-24 bg-blue-200 mx-1"></div>
               <div className="w-8 h-12 bg-white mx-1"></div>
             </div>
             <p className="mt-6 text-sm text-gray-200">“Basement is surprisingly handy for keeping all my business organized.”</p>
