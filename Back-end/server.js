@@ -10,6 +10,7 @@ import productRoutes from "./routes/productRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import shopifyRoutes from "./routes/shopifyRoutes.js"; // Shopify Routes
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js"; // Customer Routes
 
 dotenv.config();
 
@@ -35,11 +36,15 @@ mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-  .then(() => console.log("✅ MongoDB Connected Successfully"))
+  .then(() => {
+    console.log("✅ MongoDB Connected Successfully");
+    console.log("🔗 Connected to:", process.env.MONGO_URI); // Check if MONGO_URI is correct
+  })
   .catch((err) => {
     console.error("❌ MongoDB Connection Error:", err.message);
     process.exit(1);
   });
+
   app.get("/api/config", (req, res) => {
     res.json({ backendUrl: process.env.CLIENT_URL || "http://localhost:5000" });
   });
@@ -51,5 +56,6 @@ app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/shopify", shopifyRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/customers", customerRoutes);
 // Start Server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
