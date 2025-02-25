@@ -10,10 +10,12 @@ export const initWebSocket = (server) => {
   const io = new Server(server, {
     cors: {
       origin: "http://localhost:3000", // Update with your frontend URL
-      methods: ["GET", "POST"],
+      methods: ["GET", "POST", "PUT", "DELETE"],
     },
   });
+
   ioInstance = io;
+  console.log("✅ WebSocket server initialized.");
 };
 
 // Fetch customers from Shopify
@@ -23,7 +25,7 @@ router.get("/", async (req, res) => {
       process.env.SHOPIFY_GRAPHQL_URL,
       {
         query: `{
-          customers(first: 10) {
+          customers(first: 50) {
             edges {
               node {
                 id
@@ -35,7 +37,7 @@ router.get("/", async (req, res) => {
                   city
                   country
                 }
-                orders(first: 10) {
+                orders(first: 50) {
                   edges {
                     node {
                       totalPriceSet {
@@ -92,7 +94,117 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Shopify Webhook Endpoint to Listen for Customer Updates
+// ✅ Update customer details in Shopify
+router.put("/:id", async (req, res) => {
+  try {
+    let { id } = req.params;
+    
+    // Extract numeric ID from Shopify's global ID format
+    id = id.replace("gid://shopify/Customer/", "");
+
+    const { firstName, lastName, email, tags } = req.body;
+
+    const updateQuery = {
+      query: `
+        mutation updateCustomer($input: CustomerInput!) {
+          customerUpdate(input: $input) {
+            customer {
+              id
+              firstName
+              lastName
+              email
+              tags
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        input: {
+          id: `gid://shopify/Customer/${id}`, // Ensure it's in Shopify format
+          firstName,
+          lastName,
+          email,
+          tags,
+        },
+      },
+    };
+
+    const response = await axios.post(process.env.SHOPIFY_GRAPHQL_URL, updateQuery, {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const errors = response.data.data.customerUpdate.userErrors;
+    if (errors.length > 0) {
+      return res.status(400).json({ errors });
+    }
+
+    const updatedCustomer = response.data.data.customerUpdate.customer;
+
+    if (ioInstance) {
+      ioInstance.emit("customerUpdated", updatedCustomer);
+    }
+
+    res.status(200).json(updatedCustomer);
+  } catch (error) {
+    console.error("❌ Error updating customer:", error);
+    res.status(500).json({ error: "Failed to update customer" });
+  }
+});
+
+
+// ✅ Delete customer from Shopify
+router.delete("/:id", async (req, res) => {
+  try {
+    let { id } = req.params;
+    
+    // Extract numeric ID from Shopify global ID
+    id = id.replace("gid://shopify/Customer/", "");
+
+    const deleteQuery = {
+      query: `
+        mutation {
+          customerDelete(input: { id: "gid://shopify/Customer/${id}" }) {
+            deletedCustomerId
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+    };
+
+    const response = await axios.post(process.env.SHOPIFY_GRAPHQL_URL, deleteQuery, {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const errors = response.data.data.customerDelete.userErrors;
+    if (errors.length > 0) {
+      return res.status(400).json({ errors });
+    }
+
+    if (ioInstance) {
+      ioInstance.emit("customerDeleted", id);
+    }
+
+    res.status(200).json({ success: true, deletedCustomerId: id });
+  } catch (error) {
+    console.error("❌ Error deleting customer:", error);
+    res.status(500).json({ error: "Failed to delete customer" });
+  }
+});
+
+// ✅ Shopify Webhook: Listen for Customer Updates
 router.post("/webhook/customers", (req, res) => {
   try {
     console.log("🔔 Customer webhook received:", req.body);
