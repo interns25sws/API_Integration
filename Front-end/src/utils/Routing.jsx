@@ -6,6 +6,7 @@ import Products from "../components/Products"; // ✅ Import Products Component
 import Layout from "../components/Layout"; // ✅ Import Layout
 import Orders from "../components/Orders";
 import Customers from "../components/Customers";
+import CreateOrder from "../components/CreateOrder";
 
 const Routing = () => {
   return (
@@ -20,6 +21,7 @@ const Routing = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/products" element={<Products />} />  {/* ✅ Updated */}
         <Route path="/orders" element={<Orders/>} />
+        <Route path="/create-order" element={<CreateOrder/>} />
         <Route path="/customers" element={<Customers/>} />
       </Route>
     </Routes>

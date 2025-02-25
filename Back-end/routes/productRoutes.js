@@ -1,33 +1,32 @@
-// filepath: /c:/Users/jishan/Documents/GitHub/API_Integration/Back-end/routes/productRoutes.js
 import express from "express";
 import Product from "../models/Product.js";
 
 const router = express.Router();
 
-// Add a new product
-router.post("/", async (req, res) => {
-  const { name, price, stock, category, rating, reviews, image } = req.body;
-
-  // Validate required fields
-  if (!name || !price || !stock || !category || !rating || !reviews || !image) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  const product = new Product({
-    name,
-    price,
-    stock,
-    category,
-    rating,
-    reviews,
-    image,
-  });
-
+// Save products to the database
+router.post("/save", async (req, res) => {
   try {
-    const newProduct = await product.save();
-    res.status(201).json(newProduct);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    const { products } = req.body;
+
+    for (const product of products) {
+      await Product.findOneAndUpdate({ id: product.id }, product, { upsert: true });
+    }
+
+    res.status(200).json({ message: "Products saved successfully!" });
+  } catch (error) {
+    console.error("Error saving products:", error);
+    res.status(500).json({ message: "Server error while saving products" });
+  }
+});
+
+// Fetch products from the database
+router.get("/", async (req, res) => {
+  try {
+    const products = await Product.find();
+    res.status(200).json(products);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ message: "Server error while fetching products" });
   }
 });
 

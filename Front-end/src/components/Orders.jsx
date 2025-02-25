@@ -1,95 +1,6 @@
-// // // filepath: /c:/Users/jishan/Documents/GitHub/API_Integration/Front-end/src/components/Orders.jsx
-// import { useEffect, useState } from "react";
-// import axios from "axios";
-
-// const Orders = () => {
-//   const [orders, setOrders] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState(null);
-
-//   const fetchOrders = async () => {
-//     try {
-//       const response = await axios.get("http://localhost:5000/api/orders"); // Fetch from MongoDB backend
-
-//       console.log("📦 Orders from MongoDB:", response.data);
-//       setOrders(response.data);
-//     } catch (error) {
-//       console.error("❌ Error fetching orders:", error);
-//       setError("Failed to fetch orders");
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   useEffect(() => {
-//     fetchOrders();
-//   }, []);
-
-//   return (
-//     <div className="p-4">
-//       <h2 className="text-xl font-bold mb-4">Shopify Orders (Stored in MongoDB)</h2>
-
-//       {loading ? (
-//         <p>Loading orders...</p>
-//       ) : error ? (
-//         <p className="text-red-500">{error}</p>
-//       ) : (
-//         <table className="w-full border border-gray-300 bg-white">
-//           <thead className="bg-gray-100">
-//             <tr>
-//               <th className="p-2 border">Order ID</th>
-//               <th className="p-2 border">Created At</th>
-//               <th className="p-2 border">Customer</th>
-//               <th className="p-2 border">Total</th>
-//               <th className="p-2 border">Payment Status</th>
-//               <th className="p-2 border">Items</th>
-//               <th className="p-2 border">Delivery Number</th>
-//               <th className="p-2 border">Order Status</th>
-//               <th className="p-2 border">Action</th>
-//             </tr>
-//           </thead>
-//           <tbody>
-//             {orders.map((order) => (
-//               <tr key={order.orderId} className="border">
-//                 <td className="p-2 border">{order.name}</td>
-//                 <td className="p-2 border">{new Date(order.createdAt).toLocaleDateString()}</td>
-//                 <td className="p-2 border">{order.email || "N/A"}</td>
-//                 <td className="p-2 border">
-//                     ${order.totalPrice ? parseFloat(order.totalPrice).toFixed(2) : "N/A"} {order.currency}
-//           </td>
-
-//                 <td className="p-2 border">{order.paymentStatus || "N/A"}</td>
-//                 <td className="p-2 border">
-//                   <ul>
-//                     {order.lineItems.map((item, index) => (
-//                       <li key={index}>
-//                         {item.title} (x{item.quantity})
-//                       </li>
-//                     ))}
-//                   </ul>
-//                 </td>
-//                 <td className="p-2 border">{order.deliveryNumber || "Not Shipped Yet"}</td>
-//                 <td className="p-2 border">
-//                   {order.orderStatus === "UNFULFILLED" ? "Pending Shipment" : order.orderStatus}
-//                 </td>
-//                 <td className="p-2 border">
-//                   <button className="bg-blue-500 text-white p-1 rounded">Edit</button>
-//                   <button className="bg-red-500 text-white p-1 rounded ml-2">Delete</button>
-//                 </td>
-//               </tr>
-//             ))}
-//           </tbody>
-//         </table>
-//       )}
-//     </div>
-//   );
-// };
-
-// export default Orders;
-
-
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
@@ -98,6 +9,8 @@ const Orders = () => {
   const [editingOrder, setEditingOrder] = useState(null);
   const [updatedOrder, setUpdatedOrder] = useState({});
   const [viewingOrder, setViewingOrder] = useState(null);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchOrders();
@@ -180,13 +93,22 @@ const Orders = () => {
   
   return (
     <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Shopify Orders</h2>
+      <div className="flex justify-between items-center mb-4">
+    <h2 className="text-xl font-bold">Shopify Orders</h2>
+    <button 
+      onClick={() => navigate("/create-order")}
+      className="bg-green-500 text-white p-2 rounded"
+    >
+      Create Order
+    </button>
+  </div>
       {loading ? (
         <p>Loading orders...</p>
       ) : error ? (
         <p className="text-red-500">{error}</p>
       ) : (
-        <table className="w-full border border-gray-300 bg-white">
+        <table className="w-[95%] mx-auto mt-4 rounded-lg border bg-white">
+        
           <thead className="bg-gray-100">
             <tr>
               <th className="p-2 border">Order ID</th>

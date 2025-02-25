@@ -1,37 +1,46 @@
 import express from "express";
 import axios from "axios";
-import Customer from "../models/Customer.js";
+import { Server } from "socket.io";
 
- const router = express.Router();
+const router = express.Router();
+let ioInstance;
 
-// Fetch customers from Shopify and store in MongoDB
-router.post("/fetch-customers", async (req, res) => {
-    try {
-      console.log("⏳ Fetching customers from Shopify...");
-  
-      const response = await axios.post(
-        process.env.SHOPIFY_GRAPHQL_URL,
-        {
-          query: `{
-            customers(first: 10) {
-              edges {
-                node {
-                  id
-                  firstName
-                  lastName
-                  email
-                  tags
-                  defaultAddress {
-                    city
-                    country
-                  }
-                  orders(first: 10) {
-                    edges {
-                      node {
-                        totalPriceSet {
-                          shopMoney {
-                            amount
-                          }
+// Initialize WebSocket server
+export const initWebSocket = (server) => {
+  const io = new Server(server, {
+    cors: {
+      origin: "http://localhost:3000", // Update with your frontend URL
+      methods: ["GET", "POST"],
+    },
+  });
+  ioInstance = io;
+};
+
+// Fetch customers from Shopify
+router.get("/", async (req, res) => {
+  try {
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      {
+        query: `{
+          customers(first: 10) {
+            edges {
+              node {
+                id
+                firstName
+                lastName
+                email
+                tags
+                defaultAddress {
+                  city
+                  country
+                }
+                orders(first: 10) {
+                  edges {
+                    node {
+                      totalPriceSet {
+                        shopMoney {
+                          amount
                         }
                       }
                     }
@@ -39,103 +48,63 @@ router.post("/fetch-customers", async (req, res) => {
                 }
               }
             }
-          }`,
+          }
+        }`,
+      },
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
         },
-        {
-          headers: {
-            "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-  
-      if (response.data.errors) {
-        return res.status(400).json({ error: response.data.errors });
       }
-  
-      // Process customer data
-      const customers = response.data.data.customers.edges.map(({ node }) => {
-        const orders = node.orders.edges;
-        const ordersCount = orders.length;
-        const amountSpent = orders.reduce(
-          (total, order) => total + parseFloat(order.node.totalPriceSet.shopMoney.amount),
-          0
-        );
-  
-        return {
-          shopifyId: node.id,
-          firstName: node.firstName,
-          lastName: node.lastName,
-          email: node.email,
-          location: node.defaultAddress
-            ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
-            : "Unknown",
-          orders: ordersCount,
-          amountSpent: amountSpent.toFixed(2),
-          tags: node.tags,
-        };
-      });
-  
-      // Save to database
-      for (const customer of customers) {
-        await Customer.findOneAndUpdate(
-          { shopifyId: customer.shopifyId },
-          customer,
-          { upsert: true, new: true }
-        );
-      }
-  
-      res.status(200).json({ message: "Customers saved successfully", customers });
-    } catch (error) {
-      console.error("❌ Error fetching customers:", error);
-      res.status(500).json({ error: error.message || "Internal Server Error" });
-    }
-  });
-  
-
-// Get all customers
-router.get("/", async (req, res) => {
-    try {
-      const customers = await Customer.find();
-      res.json(customers);
-    } catch (err) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-// Get a single customer by ID
-router.get("/:customerId", async (req, res) => {
-  try {
-    const customer = await Customer.findOne({ customerId: req.params.customerId });
-    if (!customer) return res.status(404).json({ error: "Customer not found" });
-    res.json(customer);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Update a customer
-router.put("/:customerId", async (req, res) => {
-  try {
-    const updatedCustomer = await Customer.findOneAndUpdate(
-      { customerId: req.params.customerId },
-      { $set: req.body },
-      { new: true }
     );
-    if (!updatedCustomer) return res.status(404).json({ error: "Customer not found" });
-    res.json(updatedCustomer);
+
+    if (response.data.errors) {
+      return res.status(400).json({ error: response.data.errors });
+    }
+
+    const customers = response.data.data.customers.edges.map(({ node }) => {
+      const orders = node.orders.edges;
+      const ordersCount = orders.length;
+      const amountSpent = orders.reduce(
+        (total, order) => total + parseFloat(order.node.totalPriceSet.shopMoney.amount),
+        0
+      );
+
+      return {
+        shopifyId: node.id,
+        firstName: node.firstName,
+        lastName: node.lastName,
+        email: node.email,
+        location: node.defaultAddress
+          ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
+          : "Unknown",
+        orders: ordersCount,
+        amountSpent: amountSpent.toFixed(2),
+        tags: node.tags,
+      };
+    });
+
+    res.status(200).json(customers);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("❌ Error fetching customers:", error);
+    res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });
 
-// Delete a customer
-router.delete("/:customerId", async (req, res) => {
+// Shopify Webhook Endpoint to Listen for Customer Updates
+router.post("/webhook/customers", (req, res) => {
   try {
-    const deletedCustomer = await Customer.findOneAndDelete({ customerId: req.params.customerId });
-    if (!deletedCustomer) return res.status(404).json({ error: "Customer not found" });
-    res.json({ message: "Customer deleted successfully" });
+    console.log("🔔 Customer webhook received:", req.body);
+
+    if (ioInstance) {
+      ioInstance.emit("customerUpdate", req.body);
+    }
+
+    res.status(200).send("Webhook received");
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("❌ Error processing webhook:", error);
+    res.status(500).send("Error processing webhook");
   }
 });
 
