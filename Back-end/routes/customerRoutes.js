@@ -1,57 +1,54 @@
 import express from "express";
 import axios from "axios";
-import { Server } from "socket.io";
 
 const router = express.Router();
-let ioInstance;
 
-// Initialize WebSocket server
-export const initWebSocket = (server) => {
-  const io = new Server(server, {
-    cors: {
-      origin: "http://localhost:3000", // Update with your frontend URL
-      methods: ["GET", "POST", "PUT", "DELETE"],
-    },
-  });
-
-  ioInstance = io;
-  console.log("✅ WebSocket server initialized.");
-};
-
-// Fetch customers from Shopify
+// ✅ Fetch customers directly from Shopify
 router.get("/", async (req, res) => {
   try {
+    const { limit = 10, cursor = null } = req.query; // Default limit = 10, cursor = null for first page
+
     const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
       {
-        query: `{
-          customers(first: 50) {
-            edges {
-              node {
-                id
-                firstName
-                lastName
-                email
-                tags
-                defaultAddress {
-                  city
-                  country
-                }
-                orders(first: 50) {
-                  edges {
-                    node {
-                      totalPriceSet {
-                        shopMoney {
-                          amount
+        query: `
+          query GetCustomers($limit: Int!, $cursor: String) {
+            customers(first: $limit, after: $cursor) {
+              edges {
+                node {
+                  id
+                  firstName
+                  lastName
+                  email
+                  tags
+                  defaultAddress {
+                    id
+                    address1
+                    city
+                    country
+                  }
+                  orders(first: 50) {
+                    edges {
+                      node {
+                        totalPriceSet {
+                          shopMoney {
+                            amount
+                          }
                         }
                       }
                     }
                   }
                 }
+                cursor
+              }
+              pageInfo {
+                hasNextPage
+                hasPreviousPage
               }
             }
           }
-        }`,
+        `,
+        variables: { limit: parseInt(limit), cursor },
       },
       {
         headers: {
@@ -65,7 +62,8 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ error: response.data.errors });
     }
 
-    const customers = response.data.data.customers.edges.map(({ node }) => {
+    const customersData = response.data.data.customers;
+    const customers = customersData.edges.map(({ node, cursor }) => {
       const orders = node.orders.edges;
       const ordersCount = orders.length;
       const amountSpent = orders.reduce(
@@ -78,146 +76,321 @@ router.get("/", async (req, res) => {
         firstName: node.firstName,
         lastName: node.lastName,
         email: node.email,
-        location: node.defaultAddress
-          ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
-          : "Unknown",
+        location: node.defaultAddress ? `${node.defaultAddress.city}, ${node.defaultAddress.country}` : "Unknown",
+        addressId: node.defaultAddress ? node.defaultAddress.id : null,
         orders: ordersCount,
         amountSpent: amountSpent.toFixed(2),
         tags: node.tags,
+        cursor, // Store cursor for pagination
       };
     });
 
-    res.status(200).json(customers);
+    res.status(200).json({
+      customers,
+      hasNextPage: customersData.pageInfo.hasNextPage,
+      hasPreviousPage: customersData.pageInfo.hasPreviousPage,
+      nextCursor: customers.length > 0 ? customers[customers.length - 1].cursor : null, // Pass next cursor for frontend
+    });
   } catch (error) {
     console.error("❌ Error fetching customers:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// ✅ Update customer details in Shopify
+
+// ✅ Update customer in Shopify (Now supports updating location)
 router.put("/:id", async (req, res) => {
   try {
-    let { id } = req.params;
-    
-    // Extract numeric ID from Shopify's global ID format
-    id = id.replace("gid://shopify/Customer/", "");
+    const shopifyId = `gid://shopify/Customer/${req.params.id}`;
+    const { firstName, lastName, email, tags, location, addressId, address1 } = req.body;
 
+    // Extract city & country from location
+    let city = "";
+    let country = "";
+    if (location) {
+      const parts = location.split(",");
+      city = parts[0]?.trim() || "";
+      country = parts[1]?.trim() || "";
+    }
+
+    // 🔹 1️⃣ Update Customer Details
+    const customerUpdateResponse = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      {
+        query: `
+          mutation updateCustomer($input: CustomerInput!) {
+            customerUpdate(input: $input) {
+              customer {
+                id
+                firstName
+                lastName
+                email
+                tags
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        variables: {
+          input: {
+            id: shopifyId,
+            firstName: firstName || "",
+            lastName: lastName || "",
+            email: email || "",
+            tags: tags || [],
+          },
+        },
+      },
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Check for errors in customer update
+    const customerErrors = customerUpdateResponse.data.data.customerUpdate.userErrors;
+    if (customerErrors.length > 0) {
+      console.error("❌ Customer Update Errors:", customerErrors);
+      return res.status(400).json({ errors: customerErrors });
+    }
+
+    // 🔹 2️⃣ Update Address Only If Necessary
+    if (addressId && city && country && address1) {
+      const addressUpdateResponse = await axios.post(
+        process.env.SHOPIFY_GRAPHQL_URL,
+        {
+          query: `
+            mutation updateAddress($addressId: ID!, $address: MailingAddressInput!) {
+              customerAddressUpdate(customerAddressId: $addressId, address: $address) {
+                customerAddress {
+                  id
+                  address1
+                  city
+                  country
+                }
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }
+          `,
+          variables: {
+            addressId: addressId,
+            address: {
+              address1: address1,  // ✅ Required field
+              city: city,
+              country: country,
+            },
+          },
+        },
+        {
+          headers: {
+            "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      // Check for errors in address update
+      const addressErrors = addressUpdateResponse.data.data.customerAddressUpdate.userErrors;
+      if (addressErrors.length > 0) {
+        console.error("❌ Address Update Errors:", addressErrors);
+        return res.status(400).json({ errors: addressErrors });
+      }
+    }
+
+    res.status(200).json({ message: "Customer updated successfully" });
+  } catch (error) {
+    console.error("❌ Error updating customer:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to update customer" });
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
     const { firstName, lastName, email, tags } = req.body;
 
-    const updateQuery = {
-      query: `
-        mutation updateCustomer($input: CustomerInput!) {
-          customerUpdate(input: $input) {
-            customer {
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      {
+        query: `
+          mutation createCustomer($input: CustomerInput!) {
+            customerCreate(input: $input) {
+              customer {
+                id
+                firstName
+                lastName
+                email
+                tags
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        variables: {
+          input: {
+            firstName,
+            lastName,
+            email,
+            tags,
+          },
+        },
+      },
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log("📌 Shopify Response:", response.data); // ✅ Log Shopify's response
+
+    // Handle user errors from Shopify
+    const userErrors = response.data.data.customerCreate.userErrors;
+    if (userErrors.length > 0) {
+      console.error("❌ Shopify GraphQL Errors:", userErrors);
+      return res.status(400).json({ errors: userErrors });
+    }
+
+    res.status(201).json({
+      message: "Customer created successfully",
+      customer: response.data.data.customerCreate.customer,
+    });
+  } catch (error) {
+    console.error("❌ Error creating customer:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to create customer" });
+  }
+});
+router.get("/:id", async (req, res) => {
+  try {
+    let customerId = req.params.id;
+    
+    if (!customerId.startsWith("gid://")) {
+      customerId = `gid://shopify/Customer/${customerId}`;
+    }
+    
+    console.log("🔍 Fetching Customer with ID:", customerId);
+
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      {
+        query: `
+          query getCustomer($id: ID!) {
+            customer(id: $id) {
               id
               firstName
               lastName
               email
               tags
-            }
-            userErrors {
-              field
-              message
+              defaultAddress {
+                address1
+                city
+                province
+                country
+                zip
+              }
+              orders(first: 5) {
+                edges {
+                  node {
+                    id
+                    name
+                    totalPriceSet {
+                      presentmentMoney {
+                        amount
+                        currencyCode
+                      }
+                    }
+                    createdAt
+                  }
+                }
+              }
             }
           }
-        }
-      `,
-      variables: {
-        input: {
-          id: `gid://shopify/Customer/${id}`, // Ensure it's in Shopify format
-          firstName,
-          lastName,
-          email,
-          tags,
+        `,
+        variables: { id: customerId },
+      },
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
         },
-      },
-    };
+      }
+    );
 
-    const response = await axios.post(process.env.SHOPIFY_GRAPHQL_URL, updateQuery, {
-      headers: {
-        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-        "Content-Type": "application/json",
-      },
-    });
+    console.log("🔎 Shopify Response:", response.data);
 
-    const errors = response.data.data.customerUpdate.userErrors;
-    if (errors.length > 0) {
-      return res.status(400).json({ errors });
+    const customer = response.data.data.customer;
+
+    if (!customer) {
+      console.error("❌ Customer not found in Shopify:", response.data);
+      return res.status(404).json({ message: "Customer not found in Shopify" });
     }
 
-    const updatedCustomer = response.data.data.customerUpdate.customer;
-
-    if (ioInstance) {
-      ioInstance.emit("customerUpdated", updatedCustomer);
-    }
-
-    res.status(200).json(updatedCustomer);
+    res.json(customer);
   } catch (error) {
-    console.error("❌ Error updating customer:", error);
-    res.status(500).json({ error: "Failed to update customer" });
+    console.error("❌ Error fetching customer from Shopify:", error.response?.data || error.message);
+    res.status(500).json({ message: "Server error", error: error.response?.data });
   }
 });
-
 
 // ✅ Delete customer from Shopify
+
 router.delete("/:id", async (req, res) => {
   try {
-    let { id } = req.params;
-    
-    // Extract numeric ID from Shopify global ID
-    id = id.replace("gid://shopify/Customer/", "");
+    const shopifyCustomerId = `gid://shopify/Customer/${req.params.id}`;
+    const shopifyGraphQLUrl = process.env.SHOPIFY_GRAPHQL_URL;
 
-    const deleteQuery = {
-      query: `
-        mutation {
-          customerDelete(input: { id: "gid://shopify/Customer/${id}" }) {
-            deletedCustomerId
-            userErrors {
-              field
-              message
-            }
+    const mutation = `
+      mutation {
+        customerDelete(input: { id: "${shopifyCustomerId}" }) {
+          deletedCustomerId
+          userErrors {
+            field
+            message
           }
         }
-      `,
-    };
+      }
+    `;
 
-    const response = await axios.post(process.env.SHOPIFY_GRAPHQL_URL, deleteQuery, {
-      headers: {
-        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-        "Content-Type": "application/json",
-      },
-    });
+    const response = await axios.post(
+      shopifyGraphQLUrl,
+      { query: mutation },
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    const errors = response.data.data.customerDelete.userErrors;
-    if (errors.length > 0) {
-      return res.status(400).json({ errors });
+    console.log("📌 Shopify Response:", response.data); // ✅ Log Shopify's response
+
+    const { data } = response;
+
+    if (data.errors || data.data.customerDelete.userErrors.length > 0) {
+      return res.status(400).json({
+        error: "Shopify deletion failed",
+        details: data.errors || data.data.customerDelete.userErrors,
+      });
     }
 
-    if (ioInstance) {
-      ioInstance.emit("customerDeleted", id);
-    }
+    res.json({ success: true, deletedCustomerId: req.params.id });
 
-    res.status(200).json({ success: true, deletedCustomerId: id });
   } catch (error) {
-    console.error("❌ Error deleting customer:", error);
-    res.status(500).json({ error: "Failed to delete customer" });
+    console.error("❌ Error deleting customer:", error.response?.data || error.message);
+    res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
 
-// ✅ Shopify Webhook: Listen for Customer Updates
-router.post("/webhook/customers", (req, res) => {
-  try {
-    console.log("🔔 Customer webhook received:", req.body);
-
-    if (ioInstance) {
-      ioInstance.emit("customerUpdate", req.body);
-    }
-
-    res.status(200).send("Webhook received");
-  } catch (error) {
-    console.error("❌ Error processing webhook:", error);
-    res.status(500).send("Error processing webhook");
-  }
-});
 
 export default router;

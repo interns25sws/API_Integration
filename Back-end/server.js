@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import webhooks from "./routes/webhooks.js";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
@@ -57,6 +56,5 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/shopify", shopifyRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/webhooks", webhooks);
 // Start Server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

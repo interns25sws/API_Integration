@@ -174,7 +174,7 @@ router.post("/graphql", async (req, res) => {
 
   try {
     const response = await axios.post(
-      `https://${process.env.SHOPIFY_STORE_NAME}/admin/api/2023-01/graphql.json`,
+      `https://${process.env.SHOPIFY_STORE_NAME}/admin/api/2024-01/graphql.json`,
       req.body,
       {
         headers: {
