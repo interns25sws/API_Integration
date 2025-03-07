@@ -25,32 +25,32 @@ const Products = () => {
     fetchProducts(null);
   }, []);
 
-  const fetchProducts = async (cursor) => {
-    setLoading(true);
-    try {
-      const response = await axios.post("http://localhost:5000/api/products/fetch", {
-        limit,
-        cursor,
-      });
-  
-      const { products, nextCursor, hasNextPage } = response.data;
-  
-      setProducts(products);
-      setNextCursor(nextCursor);
-      setHasNextPage(hasNextPage);
-  
-      if (cursor) {
-        setCursorHistory((prev) => [...prev, cursor]);
-      }
-  
-      setLoading(false);
-    } catch (err) {
-      console.error("❌ Error fetching products:", err);
-      setError(err.message);
-      setLoading(false);
+const fetchProducts = async (cursor) => {
+  setLoading(true);
+  try {
+    const response = await axios.post("http://localhost:5000/api/products/fetch", {
+      limit,
+      cursor,
+    });
+
+    const { products, nextCursor, hasNextPage } = response.data;
+
+    setProducts(products);
+    setNextCursor(nextCursor);
+    setHasNextPage(hasNextPage);
+
+    if (cursor) {
+      setCursorHistory((prev) => [...prev, cursor]);
     }
-  };
-  
+
+    setLoading(false);
+  } catch (err) {
+    console.error("❌ Error fetching products:", err);
+    setError(err.message);
+    setLoading(false);
+  }
+};
+
   const extractShopifyId = (shopifyId) => shopifyId.replace("gid://shopify/Product/", "");
 
  // ✅ Delete Product
@@ -102,33 +102,24 @@ const saveEditProduct = async () => {
     return;
   }
 
-  const productId = editProduct.id.split("/").pop(); // Extract numeric Shopify ID
+  const productId = editProduct.id.split("/").pop(); // Extract numeric ID
 
   try {
     const response = await axios.put(
       `http://localhost:5000/api/products/update/${productId}`,
-      {
-        title: editProduct.title,
-        description: editProduct.description,
-      }
+      editProduct
     );
 
-    if (response.data.success) {
-      setProducts((prevProducts) =>
-        prevProducts.map((product) =>
-          product.id === editProduct.id ? response.data.updatedProduct : product
-        )
-      );
+    setProducts((prevProducts) =>
+      prevProducts.map((product) =>
+        product.id === editProduct.id ? response.data.updatedProduct : product
+      )
+    );
 
-      console.log(`✅ Product with ID ${productId} updated successfully`);
-      setEditProduct(null);
-    } else {
-      console.error("❌ Error updating product:", response.data.errors);
-      alert("Failed to update product. Please check input values.");
-    }
+    console.log(`✅ Product with ID ${productId} updated successfully`);
+    setEditProduct(null);
   } catch (err) {
     console.error("❌ Error updating product:", err.response?.data || err.message);
-    alert("An error occurred while updating the product.");
   }
 };
 
@@ -197,15 +188,14 @@ const saveEditProduct = async () => {
                   <FaEdit />
                 </button>
                 <button
-  onClick={() => {
-    console.log("🛠️ Clicked Product ID:", product.shopifyId);
-    handleDelete(product.shopifyId);
-  }}
-  className="text-red-500 hover:text-red-700"
->
-  <FaTrash />
-</button>
-
+                 onClick={() => {
+                    console.log("🛠️ Clicked Product ID:", product.shopifyId);
+                    handleDelete(product.shopifyId);
+                          }}
+                        className="text-red-500 hover:text-red-700"
+                >
+                  <FaTrash />
+                </button>
               </td>
             </tr>
           ))}
@@ -260,41 +250,6 @@ const saveEditProduct = async () => {
           </div>
         </div>
       )}
-      {editProduct && (
-  <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center">
-    <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
-      <h2 className="text-xl font-semibold mb-2">Edit Product</h2>
-      <input
-        type="text"
-        name="title"
-        value={editProduct.title}
-        onChange={handleEditChange}
-        className="w-full p-2 border rounded mb-2"
-        placeholder="Product Title"
-      />
-      <textarea
-        name="description"
-        value={editProduct.description}
-        onChange={handleEditChange}
-        className="w-full p-2 border rounded mb-2"
-        placeholder="Product Description"
-      />
-      <button
-        onClick={saveEditProduct}
-        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 mr-2"
-      >
-        Save
-      </button>
-      <button
-        onClick={() => setEditProduct(null)}
-        className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-      >
-        Cancel
-      </button>
-    </div>
-  </div>
-)}
-
     </div>
   );
 };

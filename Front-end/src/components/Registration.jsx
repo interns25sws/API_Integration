@@ -8,6 +8,7 @@ const Registration = () => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm();
 
@@ -17,6 +18,7 @@ const Registration = () => {
       alert(response.data.message);
       navigate("/login"); // Redirect to login page after success
     } catch (error) {
+      console.error("Registration Error:", error.response?.data);
       alert(error.response?.data?.message || "Registration failed");
     }
   };
@@ -30,45 +32,77 @@ const Registration = () => {
           <p className="text-gray-600 mb-6">Sign up to get started with our platform</p>
 
           <form onSubmit={handleSubmit(onSubmit)}>
+            {/* Name Input */}
             <input
-              {...register("fullName", { required: "Full Name is required" })}
+              {...register("name", { required: "Full Name is required" })}
               type="text"
               placeholder="Full Name"
               className="w-full p-2 mb-2 border rounded-md"
             />
-            {errors.fullName && <p className="text-red-500 text-sm">{errors.fullName.message}</p>}
+            {errors.name && <p className="text-red-500 text-sm">{errors.name.message}</p>}
 
+            {/* Email Input */}
             <input
-              {...register("email", { required: "Email is required", pattern: { value: /^\S+@\S+$/i, message: "Invalid email address" } })}
+              {...register("email", {
+                required: "Email is required",
+                pattern: { value: /^\S+@\S+$/i, message: "Invalid email address" },
+              })}
               type="email"
               placeholder="Email Address"
               className="w-full p-2 mb-2 border rounded-md"
             />
             {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
 
+            {/* Password Input */}
             <input
-              {...register("password", { required: "Password is required", minLength: { value: 6, message: "Password must be at least 6 characters" } })}
+              {...register("password", {
+                required: "Password is required",
+                minLength: { value: 6, message: "Password must be at least 6 characters" },
+              })}
               type="password"
               placeholder="Password"
               className="w-full p-2 mb-2 border rounded-md"
             />
             {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
 
+            {/* Confirm Password Input */}
             <input
-              {...register("confirmPassword", { required: "Confirm Password is required" })}
+              {...register("confirmPassword", {
+                required: "Confirm Password is required",
+                validate: (value) => value === watch("password") || "Passwords do not match",
+              })}
               type="password"
               placeholder="Confirm Password"
               className="w-full p-2 mb-2 border rounded-md"
             />
-            {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>}
+            {errors.confirmPassword && (
+              <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>
+            )}
 
-            <button type="submit" className="w-full bg-black text-white py-2 rounded-md">Sign Up</button>
+            {/* Role Selection */}
+            <select
+              {...register("role", { required: "Role is required" })}
+              className="w-full p-2 mb-2 border rounded-md"
+            >
+              <option value="">Select Role</option>
+              <option value="admin">Admin</option>
+              <option value="sales-rep">Sales Representative</option>
+            </select>
+            {errors.role && <p className="text-red-500 text-sm">{errors.role.message}</p>}
+
+            {/* Submit Button */}
+            <button type="submit" className="w-full bg-black text-white py-2 rounded-md">
+              Sign Up
+            </button>
           </form>
 
           {/* Navigate to Login */}
           <p className="text-center text-gray-600 mt-4">
             Already have an account?{" "}
-            <span onClick={() => navigate("/login")} className="text-black font-semibold cursor-pointer">
+            <span
+              onClick={() => navigate("/login")}
+              className="text-black font-semibold cursor-pointer"
+            >
               Login Here
             </span>
           </p>

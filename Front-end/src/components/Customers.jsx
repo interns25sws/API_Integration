@@ -26,7 +26,6 @@ const Customers = () => {
     fetchCustomers(currentCursor);
   }, [currentCursor]);
 
-  // Fetch customers from MongoDB
   const fetchCustomers = async (cursor = null) => {
     try {
       const response = await axios.get(
@@ -159,7 +158,7 @@ const Customers = () => {
       </div>
       <table className="w-[95%] mx-auto mt-4 rounded-lg h-3/4 bg-white border ">
         <thead>
-          <tr className="bg-white border border-black">
+          <tr className="bg-gray-200 border border-black">
             <th className="border px-4 py-2">Name</th>
             <th className="border px-4 py-2">Email</th>
             <th className="border px-4 py-2">Location</th>
@@ -197,8 +196,47 @@ const Customers = () => {
         </tbody>
       </table>
 
-      {/* View/Edit Modal */}
-      {selectedCustomer && (
+     
+{/* Pagination Controls */}
+<div className="flex justify-center items-center gap-4 mt-4">
+        {/* First Page Button */}
+        <button
+          disabled={currentPage === 1}
+          onClick={() => goToPage(1, null)}
+          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
+        >
+          First Page
+        </button>
+
+        {/* Previous Button */}
+        <button
+          disabled={currentPage === 1}
+          onClick={() => {
+            if (currentPage > 1) {
+              const prevCursor = cursorHistory[cursorHistory.length - 2] || null;
+              goToPage(currentPage - 1, prevCursor);
+              setCursorHistory((prev) => prev.slice(0, -1)); // Remove last cursor
+            }
+          }}
+          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
+        >
+          Previous
+        </button>
+
+        {/* Current Page Number */}
+        <span>Page {currentPage}</span>
+
+        {/* Next Button */}
+        <button
+          disabled={!hasNextPage}
+          onClick={() => goToPage(currentPage + 1, nextCursor)}
+          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
+       {/* View/Edit Modal */}
+       {selectedCustomer && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white p-6 rounded-lg shadow-lg w-96">
             <h2 className="text-xl font-bold mb-4">{isEditing ? "Edit Customer" : "Customer Details"}</h2>
@@ -247,44 +285,6 @@ const Customers = () => {
         </div>
       )}
       
-{/* Pagination Controls */}
-<div className="flex justify-center items-center gap-4 mt-4">
-        {/* First Page Button */}
-        <button
-          disabled={currentPage === 1}
-          onClick={() => goToPage(1, null)}
-          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
-        >
-          First Page
-        </button>
-
-        {/* Previous Button */}
-        <button
-          disabled={currentPage === 1}
-          onClick={() => {
-            if (currentPage > 1) {
-              const prevCursor = cursorHistory[cursorHistory.length - 2] || null;
-              goToPage(currentPage - 1, prevCursor);
-              setCursorHistory((prev) => prev.slice(0, -1)); // Remove last cursor
-            }
-          }}
-          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
-        >
-          Previous
-        </button>
-
-        {/* Current Page Number */}
-        <span>Page {currentPage}</span>
-
-        {/* Next Button */}
-        <button
-          disabled={!hasNextPage}
-          onClick={() => goToPage(currentPage + 1, nextCursor)}
-          className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
-        >
-          Next
-        </button>
-      </div>
     </div>
   );
   

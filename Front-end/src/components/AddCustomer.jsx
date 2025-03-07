@@ -103,8 +103,26 @@ const AddCustomer = () => {
       firstName: formData.firstName,
       lastName: formData.lastName,
       email: formData.email,
-      tags: formData.tags ? formData.tags.split(",").map((tag) => tag.trim()) : [],
+      phone: formData.phone,
+      notes: formData.notes,
+      taxSettings: formData.taxSettings,
+      tags: selectedTags,
+      addresses: [
+        {
+          firstName: address.firstName,
+          lastName: address.lastName,
+          company: address.company,
+          address1: address.address, // ✅ Changed from `address` to `address1`
+          address2: address.apartment, // ✅ Changed from `apartment` to `address2`
+          city: address.city,
+          province: address.state, // ✅ Changed from `state` to `province`
+          zip: address.pinCode, // ✅ Changed from `pinCode` to `zip`
+          country: address.country,
+          phone: address.phone,
+        },
+      ],
     };
+    
   
     console.log("📤 Sending request:", newCustomer);
   
@@ -115,27 +133,22 @@ const AddCustomer = () => {
   
       console.log("✅ Customer added:", response.data);
   
-      // Extract the full Shopify customer ID
-      const fullCustomerId = response.data.customer?.id; // e.g., gid://shopify/Customer/123456789
+      // Extract the Shopify customer ID
+      const fullCustomerId = response.data.customer?.id;
       if (!fullCustomerId) {
         console.error("❌ Error: Customer ID is missing from API response");
         return;
       }
   
-      // Extract the numeric ID (last part of the Shopify Global ID)
-      const extractCustomerId = (globalId) => globalId.split("/").pop();
-      const customerId = extractCustomerId(fullCustomerId);
-  
-      console.log("✅ Extracted Customer ID:", customerId); // Debug log
+      const customerId = fullCustomerId.split("/").pop(); // Extract numeric ID
+      console.log("✅ Extracted Customer ID:", customerId);
   
       // Redirect to the Customer Details page
-      navigate(`/customers/${customerId}`); // Use numeric ID in the URL
-  
+      navigate(`/customers/${customerId}`);
     } catch (error) {
       console.error("❌ Error adding customer:", error.response?.data || error.message);
     }
   };
-  
   
   
   return (

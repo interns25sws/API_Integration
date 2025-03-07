@@ -30,7 +30,7 @@ function Nav() {
   }, []);
 
   // Get the first letter of the user's name (fallback to "?")
-  const userInitial = user?.fullName ? user.fullName.charAt(0).toUpperCase() : null;
+  const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : null;
   console.log("Rendering User Initial:", userInitial)
 
   const toggleDropdown = () => {
@@ -100,6 +100,18 @@ function Nav() {
                     >
                     Customers
         </NavLink>
+        <NavLink
+          to="/users"
+          className={({ isActive }) =>
+               [
+                 "font-medium px-3 py-1 rounded-lg transition",
+                  isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
+               ].join(" ")
+                 }
+                 >
+               {user?.role === "super-admin" && "Users"}
+        </NavLink>
+
 
       </div>
 

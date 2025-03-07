@@ -306,52 +306,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ✅ Update Product
-router.put("/update/:id", async (req, res) => {
-  const { id } = req.params;
-  const { title, description, variants } = req.body;
-
-  try {
-    // ✅ Update Product Details
-    const response = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      {
-        query: `
-        mutation updateProduct($id: ID!, $title: String!, $descriptionHtml: String!) {
-          productUpdate(input: {id: $id, title: $title, descriptionHtml: $descriptionHtml}) {
-            product {
-              id
-              title
-              descriptionHtml
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-        `,
-        variables: { id, title, descriptionHtml: description },
-      },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (response.data.errors) {
-      return res.status(400).json({ error: response.data.errors });
-    }
-
-    res.json({ message: "Product updated successfully", data: response.data.data.productUpdate.product });
-  } catch (error) {
-    console.error("Error updating product:", error.response?.data || error.message);
-    res.status(500).json({ error: "Failed to update product" });
-  }
-});
-
 // ✅ Correct Delete Route (Permanent Deletion)
 router.delete("/:id", async (req, res) => {
   try {

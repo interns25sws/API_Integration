@@ -211,10 +211,13 @@ router.put("/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to update customer" });
   }
 });
-
+// add customer 
 router.post("/", async (req, res) => {
   try {
-    const { firstName, lastName, email, tags } = req.body;
+    const { firstName, lastName, email, phone, tags, addresses } = req.body;
+
+    console.log("📌 Received Data:", JSON.stringify(req.body, null, 2)); // ✅ Log received request
+
 
     const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
@@ -227,7 +230,18 @@ router.post("/", async (req, res) => {
                 firstName
                 lastName
                 email
+                phone
                 tags
+                defaultAddress {
+                  address1
+                  address2
+                  city
+                  province
+                  country
+                  zip
+                  phone
+                  company
+                }
               }
               userErrors {
                 field
@@ -241,7 +255,9 @@ router.post("/", async (req, res) => {
             firstName,
             lastName,
             email,
-            tags,
+            phone,
+            tags: tags ? tags.join(", ") : "",
+            addresses: addresses || [], // ✅ Fix: Use `addresses` from frontend
           },
         },
       },
@@ -253,9 +269,8 @@ router.post("/", async (req, res) => {
       }
     );
 
-    console.log("📌 Shopify Response:", response.data); // ✅ Log Shopify's response
+    console.log("📌 Shopify Response:", response.data);
 
-    // Handle user errors from Shopify
     const userErrors = response.data.data.customerCreate.userErrors;
     if (userErrors.length > 0) {
       console.error("❌ Shopify GraphQL Errors:", userErrors);

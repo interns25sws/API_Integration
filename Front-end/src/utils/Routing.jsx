@@ -10,6 +10,7 @@ import CreateOrder from "../components/CreateOrder";
 import AddCustomer from "../components/AddCustomer";
 import CustomerDetails from "../components/CustomerDetails";
 import AddProduct from "../components/AddProducts";
+import Users from "../components/Users";
 
 
 const Routing = () => {
@@ -30,6 +31,7 @@ const Routing = () => {
         <Route path="/customers" element={<Customers/>} />
         <Route path="/add-customer" element={<AddCustomer />} />
         <Route path="/customers/:id" element={<CustomerDetails />} />
+        <Route path="/users" element={<Users />} />
       </Route>
     </Routes>
   );

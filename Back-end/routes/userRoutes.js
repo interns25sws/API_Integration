@@ -83,4 +83,74 @@ router.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
+router.get("/users", async (req, res) => {
+  try {
+    const users = await User.find({ role: { $in: ["admin", "sales-rep"] } });
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching users", error });
+  }
+});
+
+router.put("/update/:id", async (req, res) => {
+  const { name, email, role } = req.body;
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, email, role },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "User updated successfully", user: updatedUser });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating user", error });
+  }
+});
+
+// 🔹 DELETE user by ID
+router.delete("/delete/:id", async (req, res) => {
+  try {
+    const deletedUser = await User.findByIdAndDelete(req.params.id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting user", error });
+  }
+});
+
+
+router.post("/add", async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
+
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: "User added successfully", user: newUser });
+  } catch (error) {
+    console.error("Error adding user:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
 export default router;

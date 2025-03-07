@@ -5,19 +5,30 @@ dotenv.config();
 
 // Middleware to authenticate the user based on the token
 export const authMiddleware = (req, res, next) => {
-  const token = req.headers["authorization"]?.split(" ")[1];  // Token comes as "Bearer <token>"
+  const token = req.header("Authorization");
+  console.log("🛠️ Auth Middleware Triggered");
 
   if (!token) {
-    return res.status(403).json({ message: "Access Denied: No token provided" });
+    console.error("❌ No Token Provided");
+    return res.status(401).json({ message: "Access Denied!" });
   }
 
   try {
-    // Verify the token with the secret key from the environment variable
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;  // Attach user info to the request object
-    next();  // Pass the request to the next middleware/controller
+    console.log("✅ Token Decoded:", decoded);
+    req.user = decoded;
+    next();
   } catch (error) {
-    console.error("❌ Token verification error:", error.message);
-    return res.status(401).json({ message: "Access Denied: Invalid token" });
+    console.error("❌ Invalid Token:", error.message);
+    res.status(400).json({ message: "Invalid Token!" });
   }
+};
+// Role-Based Access Control Middleware
+export const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: "Access Denied!" });
+    }
+    next();
+  };
 };
