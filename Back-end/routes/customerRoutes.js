@@ -1,55 +1,67 @@
 import express from "express";
 import axios from "axios";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // ✅ Fetch customers directly from Shopify
-router.get("/", async (req, res) => {
-  try {
-    const { limit = 10, cursor = null } = req.query; // Default limit = 10, cursor = null for first page
 
-    const response = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      {
-        query: `
-          query GetCustomers($limit: Int!, $cursor: String) {
-            customers(first: $limit, after: $cursor) {
-              edges {
-                node {
-                  id
-                  firstName
-                  lastName
-                  email
-                  tags
-                  defaultAddress {
-                    id
-                    address1
-                    city
-                    country
-                  }
-                  orders(first: 50) {
-                    edges {
-                      node {
-                        totalPriceSet {
-                          shopMoney {
-                            amount
-                          }
-                        }
+
+router.get("/", authMiddleware, async (req, res) => {
+  try {
+    const { limit = 10, cursor = null, page = 1 } = req.query; // Added page query for better pagination
+    const { role, tags } = req.user;
+
+    console.log("🛠️ User Role:", role);
+    console.log("🔍 User Tags:", tags);
+
+    if (!process.env.SHOPIFY_ACCESS_TOKEN || !process.env.SHOPIFY_GRAPHQL_URL) {
+      return res.status(500).json({ error: "Missing Shopify API credentials" });
+    }
+
+    // Construct GraphQL Query
+    const query = `
+      query GetCustomers($limit: Int!, $cursor: String) {
+        customers(first: $limit, after: $cursor) {
+          edges {
+            node {
+              id
+              firstName
+              lastName
+              email
+              tags
+              defaultAddress {
+                id
+                address1
+                city
+                country
+              }
+              orders(first: 50) {
+                edges {
+                  node {
+                    totalPriceSet {
+                      shopMoney {
+                        amount
                       }
                     }
                   }
                 }
-                cursor
-              }
-              pageInfo {
-                hasNextPage
-                hasPreviousPage
               }
             }
+            cursor
           }
-        `,
-        variables: { limit: parseInt(limit), cursor },
-      },
+          pageInfo {
+            hasNextPage
+            hasPreviousPage
+          }
+        }
+      }
+    `;
+
+    // Fetch customers from Shopify
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      { query, variables: { limit: parseInt(limit), cursor } },
       {
         headers: {
           "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
@@ -58,12 +70,14 @@ router.get("/", async (req, res) => {
       }
     );
 
+    console.log("📢 Shopify API Response:", JSON.stringify(response.data, null, 2));
+
     if (response.data.errors) {
       return res.status(400).json({ error: response.data.errors });
     }
 
     const customersData = response.data.data.customers;
-    const customers = customersData.edges.map(({ node, cursor }) => {
+    let customers = customersData.edges.map(({ node, cursor }) => {
       const orders = node.orders.edges;
       const ordersCount = orders.length;
       const amountSpent = orders.reduce(
@@ -76,27 +90,67 @@ router.get("/", async (req, res) => {
         firstName: node.firstName,
         lastName: node.lastName,
         email: node.email,
-        location: node.defaultAddress ? `${node.defaultAddress.city}, ${node.defaultAddress.country}` : "Unknown",
+        location: node.defaultAddress
+          ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
+          : "Unknown",
         addressId: node.defaultAddress ? node.defaultAddress.id : null,
         orders: ordersCount,
         amountSpent: amountSpent.toFixed(2),
-        tags: node.tags,
-        cursor, // Store cursor for pagination
+        tags: node.tags || [],
+        cursor,
       };
     });
 
+    console.log("📊 Total Customers Before Filtering:", customers.length);
+    console.log("📜 Customers Data:", JSON.stringify(customers, null, 2));
+
+    // 🔹 **Enforce Role-Based Access**
+    if (role === "sales-rep") {
+      console.log("🛠️ Sales Rep Tags:", tags);
+
+      // Ensure tags is an array
+      const repTags = Array.isArray(tags) ? tags : [];
+
+      // Filter customers based on tags
+      customers = customers.filter((customer) => {
+        console.log(`🔍 Checking Customer: ${customer.email}`);
+        console.log("📌 Customer Tags:", customer.tags);
+
+        // Convert all tags to lowercase for case-insensitive matching
+        const customerTags = customer.tags.map((tag) => tag.toLowerCase());
+        const hasMatchingTag = customerTags.some((tag) =>
+          repTags.includes(tag.toLowerCase())
+        );
+
+        console.log(`✅ Match Found? ${hasMatchingTag}`);
+        return hasMatchingTag;
+      });
+
+      console.log("🔍 Filtered Customers for Sales Rep:", customers);
+    }
+
+    console.log("📊 Total Customers After Filtering:", customers.length);
+
+    // ✅ Apply Pagination After Filtering
+    const startIndex = (parseInt(page) - 1) * limit;
+    const paginatedCustomers = customers.slice(startIndex, startIndex + parseInt(limit));
+    const hasNextPage = startIndex + parseInt(limit) < customers.length;
+    const nextCursor =
+      hasNextPage && paginatedCustomers.length > 0
+        ? paginatedCustomers[paginatedCustomers.length - 1].cursor
+        : null;
+
     res.status(200).json({
-      customers,
-      hasNextPage: customersData.pageInfo.hasNextPage,
-      hasPreviousPage: customersData.pageInfo.hasPreviousPage,
-      nextCursor: customers.length > 0 ? customers[customers.length - 1].cursor : null, // Pass next cursor for frontend
+      customers: paginatedCustomers,
+      hasNextPage,
+      hasPreviousPage: startIndex > 0,
+      nextCursor,
     });
   } catch (error) {
-    console.error("❌ Error fetching customers:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("❌ Error fetching customers:", error.response?.data || error.message);
+    res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });
-
 
 // ✅ Update customer in Shopify (Now supports updating location)
 router.put("/:id", async (req, res) => {
@@ -212,12 +266,23 @@ router.put("/:id", async (req, res) => {
   }
 });
 // add customer 
+
 router.post("/", async (req, res) => {
   try {
     const { firstName, lastName, email, phone, tags, addresses } = req.body;
 
-    console.log("📌 Received Data:", JSON.stringify(req.body, null, 2)); // ✅ Log received request
+    console.log("📌 Received Data:", JSON.stringify(req.body, null, 2));
 
+    // ✅ Filter addresses: Remove empty fields
+    const filteredAddresses = addresses?.map((addr) => ({
+      address1: addr.address1 || "",
+      city: addr.city || "",
+      province: addr.province || "",
+      country: addr.country || "",
+      zip: addr.zip || "",
+      phone: addr.phone || "",
+      company: addr.company || "",
+    })).filter(addr => addr.address1 || addr.city || addr.country || addr.zip) || []; // ✅ Ensures at least one valid address field exists
 
     const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
@@ -234,7 +299,6 @@ router.post("/", async (req, res) => {
                 tags
                 defaultAddress {
                   address1
-                  address2
                   city
                   province
                   country
@@ -257,7 +321,7 @@ router.post("/", async (req, res) => {
             email,
             phone,
             tags: tags ? tags.join(", ") : "",
-            addresses: addresses || [], // ✅ Fix: Use `addresses` from frontend
+            addresses: filteredAddresses, // ✅ Use filtered addresses
           },
         },
       },
@@ -269,7 +333,7 @@ router.post("/", async (req, res) => {
       }
     );
 
-    console.log("📌 Shopify Response:", response.data);
+    console.log("📌 Shopify Response:", JSON.stringify(response.data, null, 2));
 
     const userErrors = response.data.data.customerCreate.userErrors;
     if (userErrors.length > 0) {
@@ -283,17 +347,18 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating customer:", error.response?.data || error.message);
-    res.status(500).json({ error: "Failed to create customer" });
+    res.status(500).json({ error: "Failed to create customer", details: error.response?.data });
   }
 });
+
 router.get("/:id", async (req, res) => {
   try {
     let customerId = req.params.id;
-    
+
     if (!customerId.startsWith("gid://")) {
       customerId = `gid://shopify/Customer/${customerId}`;
     }
-    
+
     console.log("🔍 Fetching Customer with ID:", customerId);
 
     const response = await axios.post(
@@ -306,6 +371,7 @@ router.get("/:id", async (req, res) => {
               firstName
               lastName
               email
+              phone
               tags
               defaultAddress {
                 address1
@@ -313,6 +379,17 @@ router.get("/:id", async (req, res) => {
                 province
                 country
                 zip
+                phone
+                company
+              }
+              addresses {
+                address1
+                city
+                province
+                country
+                zip
+                phone
+                company
               }
               orders(first: 5) {
                 edges {
@@ -342,7 +419,7 @@ router.get("/:id", async (req, res) => {
       }
     );
 
-    console.log("🔎 Shopify Response:", response.data);
+    console.log("🔎 Shopify Response:", JSON.stringify(response.data, null, 2));
 
     const customer = response.data.data.customer;
 
@@ -409,3 +486,8 @@ router.delete("/:id", async (req, res) => {
 
 
 export default router;
+
+
+// curl -X POST http://localhost:5000/api/user/login ^
+// -H "Content-Type: application/json" ^
+// -d "{ \"email\": \"interns.spiderwebsolutions@gmail.com\", \"password\": \"123456\" }"

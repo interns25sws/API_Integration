@@ -28,20 +28,35 @@ const Customers = () => {
 
   const fetchCustomers = async (cursor = null) => {
     try {
-      const response = await axios.get(
-        `http://localhost:5000/api/customers?limit=${limit}${cursor ? `&cursor=${cursor}` : ""}`
-      );
+      const token = localStorage.getItem("token");
   
+      if (!token) {
+        console.error("❌ No Token Found in Local Storage!");
+        return;
+      }
+  
+      console.log("📡 Using Token:", token); // Debugging token
+  
+      const apiUrl = `http://localhost:5000/api/customers?limit=10${cursor ? `&cursor=${cursor}` : ""}`;
+      const headers = { Authorization: `Bearer ${token}` };
+  
+      console.log("📡 Fetching Customers with Headers:", headers); // Log headers
+  
+      const response = await axios.get(apiUrl, { headers });
+  
+      console.log("✅ Customers Fetched:", response.data);
       setCustomers(response.data.customers);
       setHasNextPage(response.data.hasNextPage);
       setNextCursor(response.data.nextCursor);
-      if (cursor) {
-        setCursorHistory((prev) => [...prev, cursor]);
-      }
+      if (cursor) setCursorHistory((prev) => [...prev, cursor]);
+  
     } catch (error) {
-      console.error("❌ Error fetching customers:", error);
+      console.error("❌ Error fetching customers:", error.response?.data || error.message);
     }
   };
+  
+  
+  
   const goToPage = (page, cursor = null) => {
     navigate(`?page=${page}${cursor ? `&cursor=${cursor}` : ""}`);
   };

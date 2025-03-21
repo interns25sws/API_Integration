@@ -11,6 +11,8 @@ import AddCustomer from "../components/AddCustomer";
 import CustomerDetails from "../components/CustomerDetails";
 import AddProduct from "../components/AddProducts";
 import Users from "../components/Users";
+import ForgotPassword from "../components/ForgotPassword";
+import ResetPassword from "../components/ResetPassword";
 
 
 const Routing = () => {
@@ -20,6 +22,8 @@ const Routing = () => {
       <Route path="/" element={<Navigate to="/login" />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Registration />} />
+      <Route path="/forgotpassword" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword/>} />
 
       {/* ✅ Protected Routes (With Navbar) */}
       <Route element={<Layout />}>
@@ -32,6 +36,7 @@ const Routing = () => {
         <Route path="/add-customer" element={<AddCustomer />} />
         <Route path="/customers/:id" element={<CustomerDetails />} />
         <Route path="/users" element={<Users />} />
+       
       </Route>
     </Routes>
   );

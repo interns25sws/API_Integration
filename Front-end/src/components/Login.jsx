@@ -8,11 +8,10 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Get stored email if 'Remember Me' was selected
   useEffect(() => {
     const savedEmail = localStorage.getItem("rememberedEmail");
     if (savedEmail) {
-      setValue("email", savedEmail); // Prefill email field
+      setValue("email", savedEmail);
       setRememberMe(true);
     }
   }, []);
@@ -40,20 +39,20 @@ const Login = () => {
   
       if (!response.ok) throw new Error(result.message || "Invalid credentials");
   
-      // Store user details including role
-      const userData = { ...result.user, token: result.token };
-      localStorage.setItem("user", JSON.stringify(userData));
-      localStorage.setItem("role", result.user.role); // Store role separately
+      const { user, token } = result;
   
-      // Handle 'Remember Me'
+      // ✅ Store token separately
+      localStorage.setItem("token", token);
+      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("role", user.role);
+  
       if (rememberMe) {
         localStorage.setItem("rememberedEmail", data.email);
       } else {
         localStorage.removeItem("rememberedEmail");
       }
   
-      // ✅ Redirect based on role
-      navigate("/dashboard"); // Redirect to the common dashboard
+      navigate("/dashboard");
       
     } catch (err) {
       console.error("❌ Login Error:", err.message);
@@ -66,7 +65,6 @@ const Login = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 px-4">
       <div className="bg-white p-8 rounded-2xl shadow-lg max-w-4xl w-full flex flex-col md:flex-row">
-        {/* Left Section - Form */}
         <div className="w-full md:w-1/2 p-6">
           <h2 className="text-2xl font-bold mb-4">Welcome Back!</h2>
           <p className="text-gray-600 mb-6">Sign in to continue</p>
@@ -74,7 +72,6 @@ const Login = () => {
           {error && <p className="text-red-500 text-sm text-center mb-4">{error}</p>}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {/* Email Field */}
             <div>
               <input
                 {...register("email", {
@@ -88,7 +85,6 @@ const Login = () => {
               {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
             </div>
 
-            {/* Password Field */}
             <div>
               <input
                 {...register("password", { required: "Password is required", minLength: { value: 6, message: "Password must be at least 6 characters" } })}
@@ -99,7 +95,17 @@ const Login = () => {
               {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
             </div>
 
-            {/* Remember Me Checkbox */}
+            {/* Forgot Password */}
+            <div className="text-right">
+              <button 
+                type="button"
+                className="text-sm text-blue-500 hover:underline"
+                onClick={() => navigate("/forgotpassword")}
+              >
+                Forgot Password?
+              </button>
+            </div>
+
             <div className="flex items-center">
               <input
                 type="checkbox"
@@ -111,7 +117,6 @@ const Login = () => {
               <label htmlFor="rememberMe" className="text-sm text-gray-600">Remember Me</label>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               className={`w-full bg-black text-white py-2 rounded-md hover:bg-gray-800 transition ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -121,7 +126,6 @@ const Login = () => {
             </button>
           </form>
 
-          {/* Navigate to Register */}
           <p className="text-center text-gray-600 mt-4">
             Don't have an account?{" "}
             <button onClick={() => navigate("/register")} className="text-black font-semibold underline ml-1">
@@ -130,7 +134,6 @@ const Login = () => {
           </p>
         </div>
 
-        {/* Right Section - Stats */}
         <div className="w-full md:w-1/2 flex items-center justify-center bg-gradient-to-r from-purple-400 to-blue-400 rounded-r-2xl p-6">
           <div className="text-center text-white">
             <h3 className="text-xl font-bold">$527.8K</h3>

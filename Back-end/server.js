@@ -15,13 +15,13 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigins = [
-  "http://localhost:5173",  // ✅ Allow local development
-  "https://bullvark.com",   // ✅ Allow production
-];
+// const allowedOrigins = [
+//   "http://localhost:5173",  // ✅ Allow local development
+//   "https://bullvark.com",   // ✅ Allow production
+// ];
 
 app.use(cors({
-  origin: ["http://localhost:5173", "https://bullvark.com"],
+  // origin: ["http://localhost:5173", "https://bullvark.com"],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   allowedHeaders: ["Content-Type", "Authorization", "X-Shopify-Access-Token"],
   credentials: true,

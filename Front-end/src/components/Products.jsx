@@ -102,24 +102,32 @@ const saveEditProduct = async () => {
     return;
   }
 
-  const productId = editProduct.id.split("/").pop(); // Extract numeric ID
+  const productId = editProduct.id.replace("gid://shopify/Product/", "");
 
   try {
-    const response = await axios.put(
-      `http://localhost:5000/api/products/update/${productId}`,
-      editProduct
-    );
+    const response = await fetch(`http://localhost:5000/api/products/${productId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(editProduct),
+    });
 
-    setProducts((prevProducts) =>
-      prevProducts.map((product) =>
-        product.id === editProduct.id ? response.data.updatedProduct : product
-      )
-    );
+    if (!response.ok) {
+      const errorText = await response.text(); // Catch HTML error
+      throw new Error(`Server Error: ${errorText}`);
+    }
 
-    console.log(`✅ Product with ID ${productId} updated successfully`);
-    setEditProduct(null);
-  } catch (err) {
-    console.error("❌ Error updating product:", err.response?.data || err.message);
+    const data = await response.json();
+    if (data.success) {
+      console.log("✅ Product updated successfully:", data);
+      fetchProducts();
+      setEditProduct(null);
+    } else {
+      console.error("❌ Error updating product:", data.errors);
+    }
+  } catch (error) {
+    console.error("❌ Error updating product:", error.message);
   }
 };
 
@@ -167,17 +175,19 @@ const saveEditProduct = async () => {
               </td>
               <td className="border py-2 px-4">{product.title}</td>
               <td className="border py-2 px-4">
-                {expandedDescriptions[product.id]
-                  ? product.description
-                  : `${product.description.substring(0, 50)}...`}
-                {product.description.length > 50 && (
-                  <button
-                    onClick={() => toggleDescription(product.id)}
-                    className="text-blue-500 ml-2 hover:underline"
-                  >
-                    {expandedDescriptions[product.id] ? "Show Less" : "View More"}
-                  </button>
-                )}
+              {expandedDescriptions[product.id]
+  ? product.description || "No description available"
+  : `${product.description ? product.description.substring(0, 50) : "No description"}...`
+}
+{product.description && product.description.length > 50 && (
+  <button
+    onClick={() => toggleDescription(product.id)}
+    className="text-blue-500 ml-2 hover:underline"
+  >
+    {expandedDescriptions[product.id] ? "Show Less" : "View More"}
+  </button>
+)}
+
               </td>
               <td className="border py-2 px-4 font-bold text-green-600">${product.price}</td>
               <td className="p-2 flex justify-center mt-5 space-x-2">
@@ -232,6 +242,64 @@ const saveEditProduct = async () => {
           Next
         </button>
       </div>
+      {/* ✅ Edit Product Modal */}
+{editProduct && (
+  <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center">
+    <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
+      <h2 className="text-xl font-semibold mb-2">Edit Product</h2>
+
+      {/* Title Input */}
+      <label className="block">Title:</label>
+      <input
+        type="text"
+        name="title"
+        value={editProduct.title}
+        onChange={handleEditChange}
+        className="w-full border px-2 py-1 rounded mb-2"
+      />
+
+      {/* Description Input */}
+      <label className="block">Description:</label>
+      <textarea
+        name="description"
+        value={editProduct.description}
+        onChange={handleEditChange}
+        className="w-full border px-2 py-1 rounded mb-2"
+      />
+
+      {/* Price Input */}
+      <label className="block">Price:</label>
+      <input
+        type="number"
+        name="price"
+        value={editProduct.price}
+        onChange={handleEditChange}
+        className="w-full border px-2 py-1 rounded mb-2"
+      />
+
+      {/* ✅ New: Stock (Inventory Quantity) Input */}
+      <label className="block">Stock:</label>
+      <input
+        type="number"
+        name="stock"
+        value={editProduct.stock || 0} // Default value to prevent NaN
+        onChange={handleEditChange}
+        className="w-full border px-2 py-1 rounded mb-2"
+      />
+
+      {/* Buttons */}
+      <div className="flex justify-between mt-4">
+        <button onClick={() => setEditProduct(null)} className="px-4 py-2 bg-gray-500 text-white rounded">
+          Cancel
+        </button>
+        <button onClick={saveEditProduct} className="px-4 py-2 bg-blue-500 text-white rounded">
+          Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       {selectedProduct && (
         <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-center">
           <div className="bg-white p-6 rounded-lg w-96 shadow-lg">

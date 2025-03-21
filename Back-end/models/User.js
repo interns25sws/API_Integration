@@ -7,8 +7,11 @@ const userSchema = new mongoose.Schema({
   role: { 
     type: String, 
     enum: ["super-admin", "admin", "sales-rep"], 
-    default: "sales-rep" // Default role is Sales Rep
+    default: "sales-rep" 
   },
+  tags: { type: [String], default: [] }, // Array of unique strings (manually checked)
+  resetToken: { type: String, default: null }, // Token for password reset
+  resetTokenExpires: { type: Date, default: null }, // Expiry time for the token
 });
 
 const User = mongoose.model("User", userSchema);

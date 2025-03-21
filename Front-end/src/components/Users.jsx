@@ -1,19 +1,28 @@
 import React, { useEffect, useState } from "react";
 import { FaEye, FaEdit, FaTrash } from "react-icons/fa";
+import { useForm } from "react-hook-form";
+
 
 const Users = () => {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [editUser, setEditUser] = useState(null); // For edit modal
-  const [updatedUser, setUpdatedUser] = useState({ name: "", email: "", role: "" });
+  const [updatedUser, setUpdatedUser] = useState({ name: "", email: "", role: "", tags: [] });
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [newUser, setNewUser] = useState({ name: "", email: "", role: "admin", tags: [] });
   const [tagInput, setTagInput] = useState("");
+  const [tags, setTags] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  
   useEffect(() => {
     fetchUsers();
   }, []);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { errors },
+  } = useForm();
 
   const fetchUsers = async () => {
     try {
@@ -48,7 +57,34 @@ const Users = () => {
       console.error("Error deleting user:", error);
     }
   };
+  const handleAddTag = () => {
+    if (tagInput.trim() && !tags.includes(tagInput)) {
+      setTags([...tags, tagInput]);
+      setTagInput("");
+    }
+  };
+
+  // Remove tag
+  const handleRemoveTag = (tag) => {
+    setTags(tags.filter((t) => t !== tag));
+  };
+
   
+useEffect(() => {
+  if (editUser) {
+    setUpdatedUser({ 
+      ...editUser, 
+      tags: Array.isArray(editUser.tags) ? editUser.tags : [] // Ensure tags are an array
+    });
+  }
+}, [editUser]);
+useEffect(() => {
+  if (showAddUserModal) {
+    reset(); // Clears input fields
+    setTags([]); // Clears previous tags
+    setErrorMessage(""); // Clears errors
+  }
+}, [showAddUserModal, reset]);
 
   const handleUpdateUser = async () => {
     try {
@@ -57,42 +93,49 @@ const Users = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedUser),
       });
-
-      if (!response.ok) throw new Error("Failed to update user");
-
+  
+      const data = await response.json();
+  
+      if (!response.ok) {
+        setErrorMessage(data.message || "Failed to update user"); // Store error message in state
+        return;
+      }
+  
       setUsers(users.map((user) => (user._id === editUser._id ? { ...user, ...updatedUser } : user)));
       setEditUser(null);
       alert("User updated successfully!");
     } catch (error) {
       console.error("Error updating user:", error);
+      setErrorMessage("An unexpected error occurred. Please try again.");
     }
   };
-
-  const handleAddUser = async () => {
+   
+  const onSubmit = async (formData) => {
     try {
+      setErrorMessage(""); // Clear previous errors
+  
       const response = await fetch("http://localhost:5000/api/user/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newUser.name,
-          email: newUser.email,
-          password: newUser.password, // Make sure this field is included
-          role: newUser.role,
-        }),
+        body: JSON.stringify({ ...formData, tags }),
       });
   
-      if (!response.ok) throw new Error("Failed to add user");
-  
       const data = await response.json();
-      setUsers([...users, data.user]);
-      setShowAddUserModal(false);
+  
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to add user");
+      }
+  
+      setUsers([...users, data.user]); // Update user list
+      setShowAddUserModal(false); // Close modal
+      reset(); // Clear form fields
+      setTags([]); // Clear tags
       alert("User added successfully!");
     } catch (error) {
-      console.error("Error adding user:", error);
+      setErrorMessage(error.message); // Show error message in UI
     }
   };
   
-
   return (
     <div className="p-6">
  <div className="flex justify-between items-center w-[95%] mx-auto mb-4">
@@ -156,6 +199,7 @@ const Users = () => {
             <p><strong>Name:</strong> {selectedUser.name}</p>
             <p><strong>Email:</strong> {selectedUser.email}</p>
             <p><strong>Role:</strong> {selectedUser.role}</p>
+            <p><strong>Tags:</strong> {selectedUser.tags?.join(", ")}</p>
             <button onClick={() => setSelectedUser(null)} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded">
               Close
             </button>
@@ -163,98 +207,184 @@ const Users = () => {
         </div>
       )}
 
-      {/* Edit User Modal */}
-      {editUser && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h2 className="text-xl font-semibold mb-4">Edit User</h2>
-            <label className="block font-semibold">Name:</label>
-            <input
-              type="text"
-              value={updatedUser.name}
-              onChange={(e) => setUpdatedUser({ ...updatedUser, name: e.target.value })}
-              className="border p-2 w-full mb-2"
-            />
-            <label className="block font-semibold">Email:</label>
-            <input
-              type="email"
-              value={updatedUser.email}
-              onChange={(e) => setUpdatedUser({ ...updatedUser, email: e.target.value })}
-              className="border p-2 w-full mb-2"
-            />
-            <label className="block font-semibold">Role:</label>
-            <select
-              value={updatedUser.role}
-              onChange={(e) => setUpdatedUser({ ...updatedUser, role: e.target.value })}
-              className="border p-2 w-full mb-2"
-            >
-              <option value="admin">Admin</option>
-              <option value="sales rep">Sales Rep</option>
-            </select>
-            <div className="flex justify-between mt-4">
-              <button onClick={() => setEditUser(null)} className="bg-gray-400 text-white px-4 py-2 rounded">
-                Cancel
-              </button>
-              <button onClick={handleUpdateUser} className="bg-blue-500 text-white px-4 py-2 rounded">
-                Save Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-     {showAddUserModal && (
+     {/* Edit User Modal */}
+     {editUser && (
   <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center">
     <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-      <h2 className="text-xl font-semibold mb-4">Add User</h2>
+      <h2 className="text-xl font-semibold mb-4">Edit User</h2>
+
+      {/* Show error message if exists */}
+      {errorMessage && (
+        <div className="bg-red-100 text-red-700 p-2 rounded mb-2">
+          {errorMessage}
+        </div>
+      )}
 
       <label className="block font-semibold">Name:</label>
       <input
         type="text"
-        value={newUser.name}
-        onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+        value={updatedUser.name}
+        onChange={(e) => setUpdatedUser({ ...updatedUser, name: e.target.value })}
         className="border p-2 w-full mb-2"
       />
 
       <label className="block font-semibold">Email:</label>
       <input
         type="email"
-        value={newUser.email}
-        onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-        className="border p-2 w-full mb-2"
-      />
-
-      <label className="block font-semibold">Password:</label>
-      <input
-        type="password"
-        value={newUser.password}
-        onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+        value={updatedUser.email}
+        onChange={(e) => setUpdatedUser({ ...updatedUser, email: e.target.value })}
         className="border p-2 w-full mb-2"
       />
 
       <label className="block font-semibold">Role:</label>
       <select
-        value={newUser.role}
-        onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+        value={updatedUser.role}
+        onChange={(e) => setUpdatedUser({ ...updatedUser, role: e.target.value })}
         className="border p-2 w-full mb-2"
       >
         <option value="admin">Admin</option>
         <option value="sales-rep">Sales Rep</option>
       </select>
 
+      {/* Tags Input */}
+      <label className="block font-semibold">Tags:</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
+          className="border p-2 w-full"
+        />
+      <button
+  type="button"
+  className="bg-green-500 text-white px-2 py-1 rounded"
+  onClick={() => {
+    if (tagInput.trim()) {
+      setUpdatedUser((prevUser) => ({
+        ...prevUser,
+        tags: [...(prevUser.tags || []), tagInput], // Preserve existing tags
+      }));
+      setTagInput("");
+    }
+  }}
+>
+  Add
+</button>
+
+      </div>
+
+      {/* Display tags with remove button */}
+      <div className="mt-2">
+        {updatedUser.tags && updatedUser.tags.map((tag, index) => (
+          <span key={index} className="bg-gray-200 px-2 py-1 rounded text-sm mr-2">
+            {tag}{" "}
+            <button
+              type="button"
+              className="text-red-500 ml-1"
+              onClick={() =>
+                setUpdatedUser({
+                  ...updatedUser,
+                  tags: updatedUser.tags.filter((t) => t !== tag),
+                })
+              }
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
       <div className="flex justify-between mt-4">
-        <button
-          onClick={() => setShowAddUserModal(false)}
-          className="bg-gray-400 text-white px-4 py-2 rounded"
-        >
+        <button onClick={() => setEditUser(null)} className="bg-gray-400 text-white px-4 py-2 rounded">
           Cancel
         </button>
-        <button onClick={handleAddUser} className="bg-blue-500 text-white px-4 py-2 rounded">
-          Add User
+        <button onClick={handleUpdateUser} className="bg-blue-500 text-white px-4 py-2 rounded">
+          Save Changes
         </button>
       </div>
     </div>
   </div>
 )}
+
+{showAddUserModal && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-50 flex justify-center items-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h2 className="text-xl font-semibold mb-4">Add User</h2>
+
+            {errorMessage && <p className="text-red-500">{errorMessage}</p>}
+
+            <form onSubmit={handleSubmit(onSubmit)}>
+              <label className="block font-semibold">Name:</label>
+              <input
+                {...register("name", { required: "Name is required" })}
+                className="border p-2 w-full mb-2"
+              />
+              {errors.name && <p className="text-red-500">{errors.name.message}</p>}
+
+              <label className="block font-semibold">Email:</label>
+              <input
+                {...register("email", {
+                  required: "Email is required",
+                  pattern: {
+                    value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/,
+                    message: "Invalid email format",
+                  },
+                })}
+                className="border p-2 w-full mb-2"
+              />
+              {errors.email && <p className="text-red-500">{errors.email.message}</p>}
+
+              <label className="block font-semibold">Password:</label>
+              <input
+                type="password"
+                {...register("password", { required: "Password is required", minLength: { value: 6, message: "Password must be at least 6 characters" } })}
+                className="border p-2 w-full mb-2"
+              />
+              {errors.password && <p className="text-red-500">{errors.password.message}</p>}
+
+              <label className="block font-semibold">Role:</label>
+              <select {...register("role", { required: "Role is required" })} className="border p-2 w-full mb-2">
+                <option value="admin">Admin</option>
+                <option value="sales-rep">Sales Rep</option>
+              </select>
+              {errors.role && <p className="text-red-500">{errors.role.message}</p>}
+
+              <label className="block font-semibold">Tags (Super Admin Only):</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  className="border p-2 w-full"
+                />
+                <button type="button" className="bg-green-500 text-white px-2 py-1 rounded" onClick={handleAddTag}>
+                  Add
+                </button>
+              </div>
+              <div className="mt-2">
+                {tags.map((tag, index) => (
+                  <span key={index} className="bg-gray-200 px-2 py-1 rounded text-sm mr-2">
+                    {tag} <button type="button" onClick={() => handleRemoveTag(tag)}>×</button>
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex justify-between mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddUserModal(false)}
+                  className="bg-gray-400 text-white px-4 py-2 rounded"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="bg-blue-500 text-white px-4 py-2 rounded">
+                  Add User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

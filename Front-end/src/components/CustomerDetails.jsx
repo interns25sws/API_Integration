@@ -31,31 +31,34 @@ const CustomerDetails = () => {
             {/* ✅ Display Address */}
             <h3 className="font-semibold mt-4">Address:</h3>
             <p>
-                {customer.defaultAddress 
-                    ? `${customer.defaultAddress.address1}, ${customer.defaultAddress.city}, ${customer.defaultAddress.province}, ${customer.defaultAddress.country} - ${customer.defaultAddress.zip}`
-                    : "No Address Provided"}
-            </p>
+  {customer.defaultAddress
+    ? `${customer.defaultAddress.address1}, ${customer.defaultAddress.city}, ${customer.defaultAddress.province}, ${customer.defaultAddress.country} - ${customer.defaultAddress.zip}`
+    : "No Address Provided"}
+</p>
+
     
-            {/* ✅ Display Tags */}
-            <h3 className="font-semibold mt-4">Tags:</h3>
-            <p>{customer.tags.length ? customer.tags.join(", ") : "No Tags"}</p>
-    
-            {/* ✅ Display Orders */}
-            <h3 className="font-semibold mt-4">Recent Orders:</h3>
-            {customer.orders?.edges.length ? (
-                <ul className="mt-2">
-                    {customer.orders.edges.map(({ node }) => (
-                        <li key={node.id} className="p-2 border-b">
-                            <strong>{node.name}</strong> - {node.totalPriceSet.presentmentMoney.amount} {node.totalPriceSet.presentmentMoney.currencyCode}
-                            <br />
-                            <span className="text-gray-500">Placed on: {new Date(node.createdAt).toLocaleDateString()}</span>
-                        </li>
-                    ))}
-                </ul>
-            ) : (
-                <p>No Orders</p>
-            )}
-    
+          {/* ✅ Display Tags */}
+<h3 className="font-semibold mt-4">Tags:</h3>
+<p>{customer?.tags?.length ? customer.tags.join(", ") : "No Tags"}</p>
+
+{/* ✅ Display Orders */}
+<h3 className="font-semibold mt-4">Recent Orders:</h3>
+{customer?.orders?.edges?.length ? (
+    <ul className="mt-2">
+        {(customer?.orders?.edges || []).map(({ node }) => (
+            <li key={node.id} className="p-2 border-b">
+                <strong>{node.name}</strong> - {node.totalPriceSet.presentmentMoney.amount} {node.totalPriceSet.presentmentMoney.currencyCode}
+                <br />
+                <span className="text-gray-500">
+                    Placed on: {new Date(node.createdAt).toLocaleDateString()}
+                </span>
+            </li>
+        ))}
+    </ul>
+) : (
+    <p>No Orders</p>
+)}
+
             <div className="mt-4">
                 <button 
                     className="bg-blue-500 text-white px-4 py-2 rounded-md"

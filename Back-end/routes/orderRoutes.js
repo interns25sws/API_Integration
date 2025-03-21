@@ -1,19 +1,46 @@
 import express from "express";
 import axios from "axios";
+import { authMiddleware, authorize } from "../middleware/authMiddleware.js";
+import User from "../models/User.js";
+
 
 const router = express.Router();
 
-// 🟢 Fetch orders from Shopify and store in MongoDB
-router.post("/fetch-orders", async (req, res) => {
+// Fetch orders from Shopify directly with role-based filtering
+// Fetch orders from Shopify directly with role-based filtering
+// Fetch orders from Shopify directly
+router.get("/fetch-orders-direct", authMiddleware, async (req, res) => {
   try {
-    console.log("⏳ Fetching orders from Shopify...");
+    console.log("Fetching orders directly from Shopify...");
 
+    if (!process.env.SHOPIFY_ACCESS_TOKEN) {
+      console.error("Missing Shopify Access Token");
+      return res.status(500).json({ error: "Shopify Access Token is missing" });
+    }
+
+    // Get pagination parameters
+    const limit = parseInt(req.query.limit) || 10;
+    const cursor = req.query.cursor ? `"${req.query.cursor}"` : null;
+
+    // **🔐 Role-Based Filtering**
+    let tagFilter = "";
+    if (req.user.role === "sales-rep") {
+      const userTags = req.user.tags || [];
+      console.log("🔎 Filtering orders for Sales Rep with tags:", userTags);
+
+      if (userTags.length > 0) {
+        const tagQuery = userTags.map((tag) => `tag:'${tag}'`).join(" OR ");
+        tagFilter = `, query: "${tagQuery}"`;
+      }
+    }
+
+    // ✅ Shopify GraphQL Query (Now filters orders **directly** from Shopify)
     const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
       {
         query: `
           {
-            orders(first: 50, reverse: true, query: "created_at:>2024-01-01") {
+            orders(first: ${limit}, after: ${cursor}, reverse: true${tagFilter}) {
               edges {
                 node {
                   id
@@ -39,24 +66,20 @@ router.post("/fetch-orders", async (req, res) => {
                     }
                   }
                   tags
-                  note
                   lineItems(first: 10) {
                     edges {
                       node {
                         title
                         quantity
-                        variant {
-                          id
-                        }
-                        originalUnitPriceSet {
-                          shopMoney {
-                            amount
-                          }
-                        }
                       }
                     }
                   }
                 }
+                cursor
+              }
+              pageInfo {
+                hasNextPage
+                endCursor
               }
             }
           }
@@ -70,212 +93,166 @@ router.post("/fetch-orders", async (req, res) => {
       }
     );
 
+    const ordersData = response.data?.data?.orders;
+
+    // ✅ Format orders
+    const orders = ordersData.edges.map(({ node, cursor }) => ({
+      orderId: node.legacyResourceId || node.id,
+      name: node.name,
+      createdAt: node.createdAt,
+      email: node.email || "N/A",
+      customerName: node.customer?.displayName || "Guest",
+      totalPrice: node.totalPriceSet.shopMoney.amount,
+      currency: node.totalPriceSet.shopMoney.currencyCode,
+      paymentStatus: node.displayFinancialStatus,
+      orderStatus: node.displayFulfillmentStatus || "Pending",
+      deliveryNumber: node.fulfillments?.[0]?.trackingInfo?.number || "Not Available",
+      tags: node.tags || [],
+      lineItems:
+        node.lineItems?.edges?.map(({ node }) => ({
+          title: node.title,
+          quantity: node.quantity,
+        })) || [],
+      cursor: cursor,
+    }));
+
+    res.status(200).json({
+      orders,
+      nextCursor: ordersData.pageInfo.hasNextPage ? ordersData.pageInfo.endCursor : null,
+      hasNextPage: ordersData.pageInfo.hasNextPage,
+    });
+  } catch (error) {
+    console.error(
+      "Shopify API Error:",
+      error.response ? JSON.stringify(error.response.data, null, 2) : error.message
+    );
+    res.status(500).json({ error: error.message || "Internal Server Error" });
+  }
+});
+
+
+// Update order in Shopify
+router.put("/update-order/:id", async (req, res) => {
+  const orderId = req.params.id; 
+  const { email, note, tags, customAttributes, displayFulfillmentStatus } = req.body;
+
+  console.log("Updating Order ID:", orderId, "with Data:", req.body);
+
+  if (!orderId) {
+    return res.status(400).json({ error: "Order ID is required" });
+  }
+
+  try {
+    const query = `
+      mutation orderUpdate($input: OrderInput!) {
+        orderUpdate(input: $input) {
+          order {
+            id
+            email
+            note
+            tags
+            displayFulfillmentStatus
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        id: `gid://shopify/Order/${orderId}`,
+        email: email || undefined,
+        note: note || undefined,
+        tags: tags || undefined,
+        customAttributes: customAttributes || undefined,
+        displayFulfillmentStatus: displayFulfillmentStatus || undefined,
+      }
+    };
+
+    const response = await axios.post(process.env.SHOPIFY_GRAPHQL_URL, { query, variables }, {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log("Shopify Response:", JSON.stringify(response.data, null, 2));
+
     if (response.data.errors) {
       return res.status(400).json({ error: response.data.errors });
     }
 
-    const orders = response.data.data.orders.edges.map(({ node }) => ({
-      shopifyId: node.id, // Make sure this is unique
-      orderId: node.legacyResourceId || node.id, // ✅ Shopify Order ID
-      name: node.name,
-      createdAt: node.createdAt,
-      email: node.email,
-      customerId: node.customer?.id || "", // Shopify Customer ID
-      customerName: node.customer?.displayName || "Guest",
-      totalPrice: parseFloat(node.totalPriceSet.shopMoney.amount),
-      currency: node.totalPriceSet.shopMoney.currencyCode,
-      paymentStatus: node.displayFinancialStatus,
-      orderStatus: node.displayFulfillmentStatus,
-      deliveryNumber: node.fulfillments?.[0]?.trackingInfo?.number || "Not Shipped",
-      tags: node.tags || [],
-      notes: node.note || "",
-      lineItems: node.lineItems?.edges?.map(({ node }) => ({
-        title: node.title || "Unknown Item",
-        quantity: node.quantity,
-        price: parseFloat(node.originalUnitPriceSet?.shopMoney?.amount || 0),
-        variantId: node.variant?.id || "",
-      })) || [],
-    }));
-
-    for (const order of orders) {
-      if (!order.orderId) {
-        console.warn("⚠️ Skipping order due to missing orderId:", order);
-        continue; // Skip orders with no ID
-      }
-    
-      await Order.findOneAndUpdate(
-        { orderId: order.orderId }, // Ensure correct order matching
-        order,
-        { upsert: true, new: true }
-      );
+    if (response.data.data.orderUpdate.userErrors.length > 0) {
+      return res.status(400).json({ error: response.data.data.orderUpdate.userErrors });
     }
-    
-    res.status(200).json({ message: "Orders saved successfully", orders });
+
+    res.json({ success: true, order: response.data.data.orderUpdate.order });
+
   } catch (error) {
-    console.error("❌ Error fetching orders:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    console.error("❌ Error updating order in Shopify:", error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to update order in Shopify" });
   }
 });
 
-// 🟢 Get all orders from MongoDB
-router.get("/", async (req, res) => {
+// Create a new order in Shopify
+router.post("/create-order", async (req, res) => {
   try {
-    const orders = await Order.find();
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    console.log("Incoming Order Data:", JSON.stringify(req.body, null, 2));
 
-// 🟢 Update Order Status in MongoDB & Shopify
-router.put("/:shopifyId", async (req, res) => {
-  const { shopifyId } = req.params;
-  const { orderStatus, deliveryNumber, newLineItem } = req.body;
-
-  console.log("🔄 Updating Order:", { shopifyId, orderStatus, deliveryNumber, newLineItem });
-
-  if (!shopifyId || !orderStatus) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    let queryShopifyId = shopifyId.startsWith("gid://shopify/Order/") 
-      ? shopifyId 
-      : `gid://shopify/Order/${shopifyId}`;
-
-    // 🔍 Fetch the existing order
-    const existingOrder = await Order.findOne({ shopifyId: queryShopifyId });
-
-    if (!existingOrder) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    // ✅ Keep old items + Add new product if provided
-    const updatedLineItems = [...(existingOrder.lineItems || [])];
-
-    if (newLineItem && newLineItem.title) {
-      updatedLineItems.push(newLineItem);
-    }
-
-    // ✅ Update Order in MongoDB
-    const updatedOrder = await Order.findOneAndUpdate(
-      { shopifyId: queryShopifyId },
-      { 
-        $set: { orderStatus, deliveryNumber }, 
-        $push: { lineItems: newLineItem } // Push new item without overwriting
-      },
-      { new: true }
-    );
-
-    console.log("✅ Updated Order with New Product:", updatedOrder);
-
-    res.json({
-      success: true,
-      message: "Order updated successfully",
-      updatedOrder,
-    });
-  } catch (error) {
-    console.error("❌ Error updating order:", error.response?.data || error.message);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
-  }
-});
-
-// 🟢 Delete Order from MongoDB & Cancel on Shopify
-router.delete("/:shopifyId", async (req, res) => {
-  const { shopifyId } = req.params;
-
-  try {
-    console.log("🗑️ Deleting Order:", shopifyId);
-
-    // Delete from MongoDB, ensuring we check both formats
-    const deletedOrder = await Order.findOneAndDelete({
-      $or: [
-        { shopifyId },
-        { shopifyId: `gid://shopify/Order/${shopifyId}` }
-      ]
-    });
-
-    if (!deletedOrder) {
-      return res.status(404).json({ error: "Order not found in database" });
-    }
-
-    // Cancel order in Shopify using GraphQL
-    const shopifyCancelResponse = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      {
-        query: `mutation CancelOrder($orderId: ID!) {
-          orderClose(input: {id: $orderId}) {
-            order { id }
-            userErrors { field message }
-          }
-        }`,
-        variables: {
-          orderId: deletedOrder.shopifyId, // Use the stored full Shopify GID
-        },
-      },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    console.log("🛑 Shopify Cancel Response:", shopifyCancelResponse.data);
-
-    if (shopifyCancelResponse.data.errors) {
-      return res.status(400).json({ error: shopifyCancelResponse.data.errors });
-    }
-
-    res.json({ success: true, message: "Order cancelled successfully" });
-  } catch (error) {
-    console.error("❌ Error cancelling order:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
-  }
-});
-
-// 🟢 Create New Order in MongoDB & Shopify
-router.post("/", async (req, res) => {
-  try {
     const { line_items, customer, note, tags } = req.body;
 
-    // Prepare order payload for Shopify
-    const shopifyOrderPayload = {
-      input: {
-        lineItems: line_items.map((item) => ({
-          variantId: item.product_id,
-          quantity: item.quantity || 1,
-        })),
-        customerId: customer?.id || null,
-        note,
-        tags,
-      },
-    };
+    if (!line_items || !Array.isArray(line_items) || line_items.length === 0) {
+      console.error("Error: Line items are missing.");
+      return res.status(400).json({ error: "Line items are required." });
+    }
 
-    // 🔄 Send order to Shopify via GraphQL
-    const shopifyResponse = await axios.post(
+    const formattedLineItems = line_items.map((item) => {
+      if (item.variant_id) {
+        return { variantId: item.variant_id, quantity: item.quantity };
+      } else {
+        if (!item.title || !item.price) {
+          console.error("Custom item missing title or price:", item);
+          throw new Error("Custom item must have a title and price.");
+        }
+        return {
+          title: item.title,
+          originalUnitPrice: parseFloat(item.price).toFixed(2), // Ensure valid price format
+          quantity: item.quantity,
+        };
+      }
+    });
+
+    console.log("Formatted Line Items:", JSON.stringify(formattedLineItems, null, 2));
+
+    const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
       {
-        query: `mutation CreateOrder($input: DraftOrderInput!) {
-          draftOrderCreate(input: $input) {
-            draftOrder {
-              id
-              name
-              createdAt
-              totalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
+        query: `
+          mutation createOrder($input: DraftOrderInput!) {
+            draftOrderCreate(input: $input) {
+              draftOrder {
+                id
+                name
+                totalPrice
+              }
+              userErrors {
+                field
+                message
               }
             }
-            userErrors {
-              field
-              message
-            }
           }
-        }`,
-        variables: shopifyOrderPayload,
+        `,
+        variables: {
+          input: {
+            lineItems: formattedLineItems,
+            customerId: customer?.id || null,
+            note: note || "",
+            tags: tags || [],
+          },
+        },
       },
       {
         headers: {
@@ -285,36 +262,46 @@ router.post("/", async (req, res) => {
       }
     );
 
-    const shopifyOrder = shopifyResponse.data.data.draftOrderCreate.draftOrder;
+    const { draftOrderCreate } = response.data?.data || {};
 
-    if (!shopifyOrder) {
-      return res.status(400).json({ error: "Failed to create order in Shopify" });
+    if (!draftOrderCreate) {
+      console.error("Error: Missing `draftOrderCreate` in Shopify response:", response.data);
+      return res.status(500).json({ error: "Unexpected response format from Shopify" });
     }
 
-    // ✅ Save order to MongoDB
-    const newOrder = new Order({
-      shopifyId: shopifyOrder.id,
-      orderId: shopifyOrder.name,
-      createdAt: shopifyOrder.createdAt,
-      totalPrice: parseFloat(shopifyOrder.totalPriceSet.shopMoney.amount),
-      currency: shopifyOrder.totalPriceSet.shopMoney.currencyCode,
-      customerId: customer?.id || "",
-      customerName: customer?.displayName || "Guest",
-      note,
-      tags,
-      lineItems: line_items.map((item) => ({
-        title: "Custom Product", // Modify as needed
-        quantity: item.quantity || 1,
-        price: 0, // Modify if fetching product price
-      })),
-    });
+    if (draftOrderCreate.userErrors.length > 0) {
+      console.error("Shopify Errors:", draftOrderCreate.userErrors);
+      return res.status(400).json({ errors: draftOrderCreate.userErrors });
+    }
 
-    await newOrder.save();
-
-    res.status(201).json({ message: "Order created successfully", order: newOrder });
+    console.log("Order Created Successfully:", draftOrderCreate.draftOrder);
+    res.status(201).json(draftOrderCreate.draftOrder);
   } catch (error) {
-    console.error("❌ Error creating order:", error);
+    console.error("Error creating order in Shopify:", error.response?.data || error.message);
     res.status(500).json({ error: error.message || "Internal Server Error" });
+  }
+});
+
+// Shopify GraphQL API Proxy Route
+router.post("/graphql", async (req, res) => {
+  try {
+    console.log("Processing Shopify GraphQL request...");
+
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      req.body,
+      {
+        headers: {
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.json(response.data);
+  } catch (error) {
+    console.error("Error processing Shopify GraphQL request:", error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 

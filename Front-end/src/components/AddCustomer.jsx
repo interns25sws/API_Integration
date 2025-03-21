@@ -4,11 +4,11 @@ import axios from "axios";
 import TagModal from "./TagModal";
 import AddressModal from "./AddressModal";
 
-
 const AddCustomer = () => {
   const navigate = useNavigate();
-  const [selectedTags, setSelectedTags] = useState([]); // Selected tags
-  const [showTagModal, setShowTagModal] = useState(false); // Modal state
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -18,11 +18,9 @@ const AddCustomer = () => {
     phone: "",
     notes: "",
     tags: "",
-    address: "",
     taxSettings: "Collect tax",
   });
-   
-  const [showAddressModal, setShowAddressModal] = useState(false);
+
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
@@ -33,13 +31,13 @@ const AddCustomer = () => {
     lastName: "",
     company: "",
     address: "",
-    apartment: "",
     city: "",
     state: "",
     pinCode: "",
     phone: "",
   });
-  
+
+  // Fetch countries
   useEffect(() => {
     const fetchCountries = async () => {
       try {
@@ -53,9 +51,10 @@ const AddCustomer = () => {
     fetchCountries();
   }, []);
 
+  // Fetch states based on selected country
   useEffect(() => {
     if (!address.country) return;
-    
+
     const fetchStates = async () => {
       try {
         const response = await axios.post("https://countriesnow.space/api/v0.1/countries/states", {
@@ -70,6 +69,7 @@ const AddCustomer = () => {
     fetchStates();
   }, [address.country]);
 
+  // Fetch cities based on selected state
   useEffect(() => {
     if (!address.state) return;
 
@@ -87,70 +87,94 @@ const AddCustomer = () => {
     fetchCities();
   }, [address.state]);
 
-
-
+  // Handle input change for form fields
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
   };
-  
+
+  // Handle input change for address fields
   const handleAddressChange = (e) => {
-    setAddress({ ...address, [e.target.name]: e.target.value });
-  }; 
+    setAddress((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
+  };
+
+  // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
+
+    console.log("🔍 Raw Address Data:", JSON.stringify(address, null, 2));
+
+    const formattedAddress = {
+      firstName: address.firstName?.trim() || "",
+      lastName: address.lastName?.trim() || "",
+      company: address.company?.trim() || "",
+      address1: address.address?.trim() || "", 
+      city: address.city?.trim() || "",
+      province: address.state?.trim() || "", 
+      zip: address.pinCode?.trim() || address.pincode?.trim() || "",
+      country: address.country?.trim() || "",
+      phone: address.phone?.trim() || "",
+    };
+
+    console.log("📌 Cleaned Address:", JSON.stringify(formattedAddress, null, 2));
+
+    // Validate if at least one field is filled
+    const isValidAddress = Object.values(formattedAddress).some(value => value !== "");
+
+    const filteredAddresses = isValidAddress ? [formattedAddress] : [];
+
+    console.log("📌 Filtered Addresses:", JSON.stringify(filteredAddresses, null, 2));
+
+    if (filteredAddresses.length === 0) {
+      console.error("❌ No valid address found, skipping address field");
+    }
+
     const newCustomer = {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      notes: formData.notes,
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      notes: formData.notes.trim(),
       taxSettings: formData.taxSettings,
       tags: selectedTags,
-      addresses: [
-        {
-          firstName: address.firstName,
-          lastName: address.lastName,
-          company: address.company,
-          address1: address.address, // ✅ Changed from `address` to `address1`
-          address2: address.apartment, // ✅ Changed from `apartment` to `address2`
-          city: address.city,
-          province: address.state, // ✅ Changed from `state` to `province`
-          zip: address.pinCode, // ✅ Changed from `pinCode` to `zip`
-          country: address.country,
-          phone: address.phone,
-        },
-      ],
+      addresses: filteredAddresses, 
     };
-    
-  
-    console.log("📤 Sending request:", newCustomer);
-  
+
+    console.log("📤 Sending request:", JSON.stringify(newCustomer, null, 2));
+
     try {
       const response = await axios.post("http://localhost:5000/api/customers", newCustomer, {
         headers: { "Content-Type": "application/json" },
       });
-  
+
       console.log("✅ Customer added:", response.data);
-  
-      // Extract the Shopify customer ID
+
       const fullCustomerId = response.data.customer?.id;
       if (!fullCustomerId) {
         console.error("❌ Error: Customer ID is missing from API response");
         return;
       }
-  
-      const customerId = fullCustomerId.split("/").pop(); // Extract numeric ID
+
+      const customerId = fullCustomerId.split("/").pop();
       console.log("✅ Extracted Customer ID:", customerId);
-  
-      // Redirect to the Customer Details page
+
       navigate(`/customers/${customerId}`);
     } catch (error) {
       console.error("❌ Error adding customer:", error.response?.data || error.message);
+
+      if (error.response?.data?.errors) {
+        alert(error.response.data.errors.map((err) => `${err.field}: ${err.message}`).join("\n"));
+      } else {
+        alert("Failed to create customer");
+      }
     }
   };
-  
-  
+   
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header Section */}

@@ -1,14 +1,29 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const AddressModal = ({ isOpen, onClose, onSave, initialAddress }) => {
-  const [address, setAddress] = useState(initialAddress);
+const AddressModal = ({ isOpen, onClose, onSave, initialAddress = {} }) => {
+  const [address, setAddress] = useState({
+    country: "",
+    firstName: "",
+    lastName: "",
+    company: "",
+    address: "",
+    city: "",
+    state: "",
+    pincode: "",
+    phone: "",
+    ...initialAddress,
+  });
   const [countries, setCountries] = useState([]);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [pincodeError, setPincodeError] = useState("");
   const [isPincodeValid, setIsPincodeValid] = useState(true); // Track validity
-
+  useEffect(() => {
+    if (initialAddress) {
+      setAddress((prev) => ({ ...prev, ...initialAddress }));
+    }
+  }, [initialAddress]);
   useEffect(() => {
     const fetchCountries = async () => {
       try {
