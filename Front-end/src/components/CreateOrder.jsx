@@ -1,166 +1,340 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import ProductSelector from "../components/ProductSelector"; // Product Selector Component
+import CustomItemModal from "../components/CustomItemModal"; // Custom Item Modal Component
+import ProductList from "../components/ProductList"; // New ProductList Component
+import PaymentSummary from "../components/PaymentSummary"; // New PaymentSummary Component
+import CustomerSection from "../components/CustomerSection"; // New CustomerSection Component
+import TagSection from "../components/TagSection"; // New TagSection Component
+
+const API_URL = "http://localhost:5000/api/shopify/graphql";
 
 const CreateOrder = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const customerId = searchParams.get("customerId"); // Get customerId from URL
+  const [tax, setTax] = useState(0);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [notes, setNotes] = useState("");
-  const [tags, setTags] = useState("");
-  const [markets, setMarkets] = useState(["India (INR ₹)", "USA (USD $)", "Europe (EUR €)"]);
+  const [tags, setTags] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState("India (INR ₹)");
-  const [isMarketEditing, setIsMarketEditing] = useState(false);
   const [subtotal, setSubtotal] = useState(0);
   const [discount, setDiscount] = useState(0);
   const [shipping, setShipping] = useState(0);
   const [total, setTotal] = useState(0);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isCustomItemModalOpen, setIsCustomItemModalOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [isLocked, setIsLocked] = useState(false); // ✅ Ensure isLocked is defined
+
 
   useEffect(() => {
-    fetchProducts();
-    fetchCustomers();
+    if (isProductModalOpen) {
+      fetchProducts();
+    }
+  }, [isProductModalOpen]);
+
+  useEffect(() => {
+    fetchOrders();
   }, []);
 
+  // Calculate subtotal
   useEffect(() => {
-    const calculatedSubtotal = selectedProducts.reduce((sum, p) => sum + p.price, 0);
-    setSubtotal(calculatedSubtotal);
-    setTotal(calculatedSubtotal - discount + shipping);
-  }, [selectedProducts, discount, shipping]);
+    if (!selectedProducts.length) {
+      setSubtotal(0);
+      setTax(0);
+      setTotal(0);
+      return;
+    }
+
+    const sum = selectedProducts.reduce((acc, product) => {
+      return acc + (parseFloat(product.price) || 0) * (product.quantity || 1);
+    }, 0);
+
+    setSubtotal(sum);
+  }, [selectedProducts]);
+
+  // Apply discount and calculate total
+  useEffect(() => {
+    if (!subtotal) {
+      setTotal(0);
+      return;
+    }
+
+    let totalAmount = subtotal; // Start with subtotal
+
+    if (discount && discount > 0) {
+      totalAmount -= discount; // Subtract discount
+    }
+
+    // Prevent negative values
+    totalAmount = Math.max(0, totalAmount);
+
+    // Recalculate tax (9% on the new total)
+    const taxRate = 0.09;
+    const newTax = totalAmount * taxRate;
+
+    setTax(newTax);
+    setTotal(totalAmount + newTax + shipping);
+  }, [subtotal, discount, shipping]);
 
   const fetchProducts = async () => {
+    setLoading(true);
     try {
-      const { data } = await axios.get("/api/products");
-      setProducts(data);
+      const response = await axios.get(API_URL);
+      if (response.data && response.data.products) {
+        const productsList = response.data.products.edges.map((edge) => edge.node);
+        setProducts(productsList);
+      } else {
+        setProducts([]);
+      }
+    } catch (err) {
+      console.error("❌ Error fetching products:", err);
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const fetchOrders = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/orders/fetch-orders-direct", {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`, // Ensure the token is stored in localStorage
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Orders fetched:", data);
     } catch (error) {
-      console.error("Error fetching products:", error);
+      console.error("❌ Error fetching orders:", error.message);
     }
   };
 
-  const fetchCustomers = async () => {
+  const handleProductSelect = (newProducts) => {
+    setSelectedProducts((prevProducts) => {
+      const uniqueProducts = [...prevProducts, ...newProducts].filter(
+        (p, index, self) => index === self.findIndex((item) => item.id === p.id)
+      );
+      return uniqueProducts;
+    });
+  };
+
+  const handleAddCustomItem = (customItem) => {
+    setSelectedProducts((prevProducts) => [...prevProducts, customItem]);
+    setIsCustomItemModalOpen(false);
+  };
+
+  const handleCreateOrder = async () => {
+    if (!selectedProducts.length) {
+      alert("Please add at least one product.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const { data } = await axios.get("/api/customers");
-      setCustomers(data);
+      console.log("🔥 Selected Products:", selectedProducts); // Debugging line
+      
+      if (!selectedProducts || selectedProducts.length === 0) {
+        alert("❌ No products selected!");
+        return;
+      }
+    
+      const orderData = {
+        line_items: selectedProducts.map((p) => ({
+          variant_id: p.variant_id || null,
+          title: p.title,
+          price: parseFloat(p.price) || 0,
+          quantity: p.quantity || 1,
+        })),
+        customer_id: selectedCustomer?.id || null,
+        note: notes,
+        tags: tags.join(", "),
+        total_price: total,
+      };
+    
+      console.log("🚀 Sending Order Data:", orderData); // Debugging line
+    
+      const response = await fetch("http://localhost:5000/api/orders/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      });
+    
+      const responseData = await response.json();
+    
+      if (!response.ok) {
+        throw new Error(responseData.error || "Failed to create order");
+      }
+    
+      alert("🎉 Order created successfully!");
+    
+      // Reset form
+      setSelectedProducts([]);
+      setDiscount(0);
+      setNotes("");
+      setTags([]);
+    } catch (error) {
+      console.error("❌ Error creating order:", error);
+      alert("Failed to create order. Check console for details.");
+    } finally {
+      setLoading(false);
+    }
+    
+  };
+
+  const handleUpdateQuantity = (productId, newQuantity) => {
+    setSelectedProducts((prevProducts) =>
+      prevProducts.map((product) =>
+        product.id === productId
+          ? { ...product, quantity: Math.max(1, newQuantity) }
+          : product
+      )
+    );
+  };
+
+  const handleRemoveProduct = (productId) => {
+    setSelectedProducts((prevProducts) =>
+      prevProducts.filter((product) => product.id !== productId)
+    );
+  };
+
+  useEffect(() => {
+    console.log("🔎 Extracted customerId from URL:", customerId);
+    if (customerId && customerId !== "search") {
+      fetchCustomer(customerId);
+    }
+  }, [customerId]);
+  
+
+  // Fetch Customer Data when a customerId is provided
+  const fetchCustomer = async (id) => {
+    try {
+      const response = await axios.get(`http://localhost:5000/api/customers/${id}`);
+      setSelectedCustomer(response.data);
+      setSearchTerm(response.data.email); // Autofill email in input
+    } catch (error) {
+      console.error("Error fetching customer:", error);
+    }
+  };
+  const fetchCustomers = async (query) => {
+    if (!query) return;
+    try {
+      const response = await axios.get(`http://localhost:5000/api/customers/search?query=${query}`);
+      setCustomers(response.data);
     } catch (error) {
       console.error("Error fetching customers:", error);
     }
   };
-
-  const handleProductSelect = (product) => {
-    setSelectedProducts([...selectedProducts, product]);
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setShowDropdown(true);
+    fetchCustomers(value);
   };
 
-  const handleCreateOrder = async () => {
-    try {
-      const orderData = {
-        line_items: selectedProducts.map((p) => ({ product_id: p.id, quantity: 1 })),
-        customer: selectedCustomer ? { id: selectedCustomer.id } : null,
-        note: notes,
-        tags: tags,
-      };
-      await axios.post("/api/orders", orderData);
-      alert("Order created successfully!");
-      navigate("/orders");
-    } catch (error) {
-      console.error("Error creating order:", error);
-    }
+  const handleSelectCustomer = (customer) => {
+    setSearchTerm(customer.email);
+    setSelectedCustomer(customer);
+    setShowDropdown(false);
   };
 
   return (
-    <div className="p-6 bg-gray-100 min-h-screen">
-      <h2 className="text-2xl font-bold mb-6">Create Order</h2>
+    <div className="m-5 p-6 bg-gray-100 min-h-screen">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Create Order</h2>
+        <div>
+          <button onClick={() => navigate("/orders")} className="bg-gray-300 px-4 py-2 rounded mr-2">Discard</button>
+          <button onClick={handleCreateOrder} className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
+        </div>
+      </div>
       <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Products</h3>
-          <input type="text" placeholder="Search products" className="border p-2 w-full mb-2" />
-          <button 
-            className="bg-gray-200 px-3 py-1 rounded mr-2"
-            onClick={() => setIsProductModalOpen(true)}
-          >
-            Browse
-          </button>
-          <button className="bg-gray-200 px-3 py-1 rounded">Add custom item</button>
-          <div className="mt-4">
-            {selectedProducts.length > 0 ? (
-              selectedProducts.map((p, index) => (
-                <p key={index} className="text-sm">{p.title} - ₹{p.price}</p>
-              ))
-            ) : (
-              <p className="text-gray-500">Add a product to calculate total</p>
-            )}
+        {/* Left Side: Products & Payment */}
+        <div className="col-span-2 space-y-4">
+          {/* Products Section */}
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-2">Products</h3>
+            <ProductSelector
+              buttonType="browse"
+              onSelect={handleProductSelect}
+              isOpen={isProductModalOpen}
+              onClose={() => setIsProductModalOpen(false)}
+            />
+            {loading && <p>Loading products...</p>}
+            {error && <p className="text-red-500">Error: {error}</p>}
+            <button onClick={() => setIsCustomItemModalOpen(true)} className="bg-gray-200 px-4 py-2 rounded mt-2">Add Custom Item</button>
+            <ProductList selectedProducts={selectedProducts} handleUpdateQuantity={handleUpdateQuantity} handleRemoveProduct={handleRemoveProduct} />
           </div>
+
+          {/* Payment Summary */}
+          <PaymentSummary subtotal={subtotal} discount={discount} shipping={shipping} tax={tax} total={total} selectedProducts={selectedProducts} />
         </div>
 
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Notes</h3>
-          <textarea className="border p-2 w-full" rows="2" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
+        {/* Right Side: Notes, Customers, Market & Tags */}
+        <div className="space-y-4">
+          {/* Notes Section */}
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h3 className="text-gray-900 font-medium">{discount ? `Discount: ₹${discount}` : "No discount code yet"}</h3>
+            <textarea className="border p-2 w-full" placeholder="Add any additional notes or instructions." rows="4" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
 
-        <div className="col-span-2 bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Payment</h3>
-          <p className="text-sm">Subtotal: ₹{subtotal.toFixed(2)}</p>
-          <p className="text-sm">Discount: ₹{discount.toFixed(2)}</p>
-          <p className="text-sm">Shipping: ₹{shipping.toFixed(2)}</p>
-          <h4 className="text-lg font-semibold mt-2">Total: ₹{total.toFixed(2)}</h4>
-        </div>
+        {/* Customer Selection */}
+        <CustomerSection
+  searchTerm={searchTerm}
+  setSearchTerm={setSearchTerm}  // ✅ Pass function correctly
+  showDropdown={showDropdown}
+  setShowDropdown={setShowDropdown} // ✅ Pass function correctly
+  handleSelectCustomer={handleSelectCustomer}
+  selectedCustomer={selectedCustomer}
+  isLocked={isLocked}
+/>
 
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Customer</h3>
-          <input type="text" placeholder="Search or create a customer" className="border p-2 w-full" />
-        </div>
+{/* Show selected customer */}
+{selectedCustomer && (
+  <div className="mt-2 p-2 border">
+    <p><strong>Selected:</strong> {selectedCustomer.firstName} {selectedCustomer.lastName}</p>
+    <p><strong>Email:</strong> {selectedCustomer.email}</p>
+  </div>
+)}
 
-        <div className="bg-white p-4 rounded-lg shadow relative">
-          <h3 className="text-lg font-semibold mb-2">Market</h3>
-          {!isMarketEditing ? (
-            <div className="flex justify-between items-center">
-              <p className="text-sm">{selectedMarket}</p>
-              <button onClick={() => setIsMarketEditing(true)} className="text-blue-500 text-sm">Edit</button>
-            </div>
-          ) : (
-            <select className="border p-2 w-full" value={selectedMarket} onChange={(e) => setSelectedMarket(e.target.value)} onBlur={() => setIsMarketEditing(false)}>
-              {markets.map((market, index) => (
-                <option key={index} value={market}>{market}</option>
-              ))}
+          {/* Market Section */}
+          <div className="bg-white p-4 rounded-lg shadow">
+            <h3 className="text-lg font-semibold mb-2">Market</h3>
+            <select className="border p-2 w-full" value={selectedMarket} onChange={(e) => setSelectedMarket(e.target.value)}>
+              <option value="India (INR ₹)">India (INR ₹)</option>
+              <option value="USA (USD $)">USA (USD $)</option>
+              <option value="UK (GBP £)">UK (GBP £)</option>
+              <option value="Europe (EUR €)">Europe (EUR €)</option>
             </select>
-          )}
-        </div>
-
-        <div className="bg-white p-4 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Tags</h3>
-          <input type="text" placeholder="Tags" className="border p-2 w-full" value={tags} onChange={(e) => setTags(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="mt-6">
-        <button onClick={handleCreateOrder} className="bg-green-500 text-white px-6 py-2 rounded-lg">Create Order</button>
-      </div>
-
-      {/* Product Browse Modal */}
-      {isProductModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-1/2">
-            <h3 className="text-lg font-semibold mb-4">Select Products</h3>
-            <div className="max-h-60 overflow-y-auto">
-              {products.map((product) => (
-                <div key={product.id} className="flex justify-between items-center border-b p-2">
-                  <span>{product.title} - ₹{product.price}</span>
-                  <button 
-                    className="bg-blue-500 text-white px-2 py-1 rounded"
-                    onClick={() => handleProductSelect(product)}
-                  >
-                    Add
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setIsProductModalOpen(false)} className="mt-4 bg-gray-300 px-4 py-2 rounded">Close</button>
           </div>
+
+          {/* Tags Section */}
+          <TagSection tags={tags} setTags={setTags} />
         </div>
+      </div>
+       {/* Custom Item Modal */}
+       {isCustomItemModalOpen && (
+        <CustomItemModal
+          onClose={() => setIsCustomItemModalOpen(false)}
+          onAddItem={handleAddCustomItem}
+        />
       )}
+
+      
     </div>
   );
 };
-
 export default CreateOrder;

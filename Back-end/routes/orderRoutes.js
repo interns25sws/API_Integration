@@ -1,12 +1,10 @@
 import express from "express";
 import axios from "axios";
 import { authMiddleware, authorize } from "../middleware/authMiddleware.js";
-import User from "../models/User.js";
 
 
 const router = express.Router();
 
-// Fetch orders from Shopify directly with role-based filtering
 // Fetch orders from Shopify directly with role-based filtering
 // Fetch orders from Shopify directly
 router.get("/fetch-orders-direct", authMiddleware, async (req, res) => {
@@ -200,97 +198,64 @@ router.put("/update-order/:id", async (req, res) => {
 // Create a new order in Shopify
 router.post("/create-order", async (req, res) => {
   try {
-    console.log("Incoming Order Data:", JSON.stringify(req.body, null, 2));
+    console.log("🔥 Incoming Order Request:", JSON.stringify(req.body, null, 2));
 
-    const { line_items, customer, note, tags } = req.body;
+    const { line_items, customer_id } = req.body;
 
-    if (!line_items || !Array.isArray(line_items) || line_items.length === 0) {
-      console.error("Error: Line items are missing.");
-      return res.status(400).json({ error: "Line items are required." });
+    if (!Array.isArray(line_items) || line_items.length === 0) {
+      console.error("❌ line_items is undefined or empty!");
+      return res.status(400).json({ message: "No products selected" });
     }
 
-    const formattedLineItems = line_items.map((item) => {
-      if (item.variant_id) {
-        return { variantId: item.variant_id, quantity: item.quantity };
-      } else {
-        if (!item.title || !item.price) {
-          console.error("Custom item missing title or price:", item);
-          throw new Error("Custom item must have a title and price.");
-        }
-        return {
-          title: item.title,
-          originalUnitPrice: parseFloat(item.price).toFixed(2), // Ensure valid price format
-          quantity: item.quantity,
-        };
+    const shopifyOrder = {
+      order: {
+        line_items: line_items.map(p => ({
+          variant_id: parseInt(p.variant_id.replace("gid://shopify/ProductVariant/", ""), 10), // ✅ Convert to integer
+          quantity: p.quantity
+        })),
+        customer: customer_id 
+          ? { id: parseInt(customer_id.replace("gid://shopify/Customer/", ""), 10) } // ✅ Extract numeric ID
+          : undefined,
+        financial_status: "paid",
+        currency: "USD"
       }
+    };
+
+    console.log("🛍️ Sending Order Payload:", JSON.stringify(shopifyOrder, null, 2));
+
+    const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/orders.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN
+      },
+      body: JSON.stringify(shopifyOrder)
     });
 
-    console.log("Formatted Line Items:", JSON.stringify(formattedLineItems, null, 2));
+    const data = await response.json();
 
-    const response = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      {
-        query: `
-          mutation createOrder($input: DraftOrderInput!) {
-            draftOrderCreate(input: $input) {
-              draftOrder {
-                id
-                name
-                totalPrice
-              }
-              userErrors {
-                field
-                message
-              }
-            }
-          }
-        `,
-        variables: {
-          input: {
-            lineItems: formattedLineItems,
-            customerId: customer?.id || null,
-            note: note || "",
-            tags: tags || [],
-          },
-        },
-      },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const { draftOrderCreate } = response.data?.data || {};
-
-    if (!draftOrderCreate) {
-      console.error("Error: Missing `draftOrderCreate` in Shopify response:", response.data);
-      return res.status(500).json({ error: "Unexpected response format from Shopify" });
+    if (!response.ok) {
+      console.error("❌ Shopify API Error:", JSON.stringify(data, null, 2));
+      return res.status(response.status).json({ error: data.errors || data });
     }
 
-    if (draftOrderCreate.userErrors.length > 0) {
-      console.error("Shopify Errors:", draftOrderCreate.userErrors);
-      return res.status(400).json({ errors: draftOrderCreate.userErrors });
-    }
+    res.json({ message: "Order created successfully", order: data.order });
 
-    console.log("Order Created Successfully:", draftOrderCreate.draftOrder);
-    res.status(201).json(draftOrderCreate.draftOrder);
   } catch (error) {
-    console.error("Error creating order in Shopify:", error.response?.data || error.message);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    console.error("❌ Error creating order:", error.message);
+    res.status(500).json({ message: error.message });
   }
 });
-
-// Shopify GraphQL API Proxy Route
-router.post("/graphql", async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    console.log("Processing Shopify GraphQL request...");
+    const orderId = req.params.id;
 
-    const response = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      req.body,
+    console.log(`🔥 Deleting Order: ${orderId}`);
+
+    const response = await fetch(
+      `https://bullvvark.myshopify.com/admin/api/2024-01/orders/${orderId}.json`,
       {
+        method: "DELETE",
         headers: {
           "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
           "Content-Type": "application/json",
@@ -298,10 +263,17 @@ router.post("/graphql", async (req, res) => {
       }
     );
 
-    res.json(response.data);
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("❌ Shopify API Error:", JSON.stringify(data, null, 2));
+      return res.status(response.status).json({ error: data.errors || data });
+    }
+
+    res.json({ message: "Order deleted successfully", orderId });
   } catch (error) {
-    console.error("Error processing Shopify GraphQL request:", error.message);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Error deleting order:", error.message);
+    res.status(500).json({ message: error.message });
   }
 });
 

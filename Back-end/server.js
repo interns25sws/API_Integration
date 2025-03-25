@@ -10,6 +10,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import shopifyRoutes from "./routes/shopifyRoutes.js"; // Shopify Routes
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js"; // Customer Routes
+import discountRoutes from "./routes/discountRoutes.js"; // Discount Routes
 
 dotenv.config();
 
@@ -56,5 +57,15 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/shopify", shopifyRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/customers", customerRoutes);
+console.log("📌 Customer routes loaded!"); // Debugging line
+app.use("/api/discounts", discountRoutes);
+
+// Log all routes
+console.log("📌 Registered Routes:");
+app._router.stack.forEach((r) => {
+  if (r.route && r.route.path) {
+    console.log(`${r.route.stack[0].method.toUpperCase()} ${r.route.path}`);
+  }
+});
 // Start Server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

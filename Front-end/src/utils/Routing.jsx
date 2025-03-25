@@ -31,11 +31,12 @@ const Routing = () => {
         <Route path="/products" element={<Products />} />  {/* ✅ Updated */}
         <Route path="add-products" element={<AddProduct />} />
         <Route path="/orders" element={<Orders/>} />
-        <Route path="/create-order" element={<CreateOrder/>} />
         <Route path="/customers" element={<Customers/>} />
         <Route path="/add-customer" element={<AddCustomer />} />
         <Route path="/customers/:id" element={<CustomerDetails />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/orders/create" element={<CreateOrder />} />
+
        
       </Route>
     </Routes>

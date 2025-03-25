@@ -177,54 +177,53 @@ router.put("/:id", async (req, res) => {
       { headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN, "Content-Type": "application/json" } }
     );
 
-    // ✅ Step 4: Set Inventory Quantity
-    const inventoryUpdateResponse = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      {
-        query: `
-          mutation InventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
-            inventoryAdjustQuantities(input: $input) {
-              userErrors {
-                field
-                message
-              }
+   // ✅ Step 4: Set Inventory Quantity (Absolute Value)
+   const inventoryUpdateResponse = await axios.post(
+    process.env.SHOPIFY_GRAPHQL_URL,
+    {
+      query: `
+        mutation InventorySetOnHandQuantities($input: InventorySetOnHandQuantitiesInput!) {
+          inventorySetOnHandQuantities(input: $input) {
+            userErrors {
+              field
+              message
             }
           }
-        `,
-        variables: {
-          input: {
-            name: "available", // ✅ Correct quantity type
-            reason: "correction", // ✅ Valid reason
-            changes: [
-              {
-                inventoryItemId: inventoryItemId, // ✅ Correct dynamic ID
-                delta: parseInt(stock), // ✅ Correct field
-                locationId: "gid://shopify/Location/77066436786", // ✅ Correct location ID
-              },
-            ],
-          },
-        },
+        }
+      `,
+      variables: {
+        input: {
+          reason: "Stock update from API", // ✅ Required field
+          setQuantities: [ // ✅ Must be an array
+            {
+              inventoryItemId: inventoryItemId, // ✅ Correct field
+              locationId: "gid://shopify/Location/77066436786", // ✅ Correct field
+              quantity: parseInt(stock) // ✅ `quantity` should be directly here, NOT inside an array
+            }
+          ]
+        }
       },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    console.log("🔍 Full Shopify Response:", JSON.stringify(inventoryUpdateResponse.data, null, 2));
-
-    // ✅ Check for Inventory Update Errors
-    const inventoryErrors =
-      inventoryUpdateResponse?.data?.data?.inventoryAdjustQuantities?.userErrors || [];
-
-    if (inventoryErrors.length > 0) {
-      console.error("❌ Shopify Inventory Errors:", inventoryErrors);
-      return res.status(400).json({ success: false, errors: inventoryErrors });
+    },
+    {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        "Content-Type": "application/json",
+      },
     }
+  );
+  
+console.log("🔍 Full Shopify Response:", JSON.stringify(inventoryUpdateResponse.data, null, 2));
 
-    console.log("✅ Inventory Updated Successfully");
+// ✅ Check for Inventory Update Errors
+const inventoryErrors =
+  inventoryUpdateResponse?.data?.data?.inventorySetOnHandQuantities?.userErrors || [];
+
+if (inventoryErrors.length > 0) {
+  console.error("❌ Shopify Inventory Errors:", inventoryErrors);
+  return res.status(400).json({ success: false, errors: inventoryErrors });
+}
+
+console.log("✅ Inventory Updated Successfully");
 
     res.json({
       success: true,
@@ -376,42 +375,60 @@ router.post("/", async (req, res) => {
     // ✅ Update Inventory Quantity
     if (trackQuantity && quantity > 0 && inventoryItemId && locationId) {
       console.log("🚀 Updating Inventory Quantity...");
-      await axios.post(
-        process.env.SHOPIFY_GRAPHQL_URL,
-        {
-          query: `
-            mutation SetInventoryQuantity($inventoryItemId: ID!, $locationId: ID!, $quantity: Int!) {
-              inventorySetOnHandQuantities(setOnHandQuantities: [
-                {
-                  inventoryItemId: $inventoryItemId,
-                  locationId: $locationId,
-                  onHandQuantity: $quantity
-                }
-              ]) {
-                userErrors {
-                  field
-                  message
+      try {
+        const availableDelta = parseInt(quantity);
+        if (isNaN(availableDelta)) {
+          console.error("❌ Invalid quantity. Unable to update inventory.");
+          return;
+        }
+    
+        const inventoryResponse = await axios.post(
+          process.env.SHOPIFY_GRAPHQL_URL,
+          {
+            query: `
+              mutation AdjustInventory($inventoryItemId: ID!, $locationId: ID!, $availableDelta: Int!) {
+                adjustInventoryLevel(
+                  inventoryLevel: {
+                    inventoryItemId: $inventoryItemId,
+                    locationId: $locationId,
+                    availableDelta: $availableDelta
+                  }
+                ) {
+                  inventoryLevel {
+                    available
+                  }
                 }
               }
-            }
-          `,
-          variables: {
-            inventoryItemId,
-            locationId,
-            quantity: parseInt(quantity),
+            `,
+            variables: {
+              inventoryItemId,
+              locationId,
+              availableDelta, // ✅ Correct inventory update
+            },
           },
-        },
-        {
-          headers: {
-            "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-            "Content-Type": "application/json",
-          },
+          {
+            headers: {
+              "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+    
+        console.log("✅ Inventory Update Response:", inventoryResponse.data);
+    
+        const inventoryErrors = inventoryResponse.data.data?.adjustInventoryLevel?.errors || [];
+        if (inventoryErrors.length > 0) {
+          console.error("❌ Inventory Update Errors:", inventoryErrors);
+        } else {
+          console.log("✅ Inventory Updated Successfully!");
         }
-      );
-
-      console.log("✅ Inventory Updated Successfully!");
+      } catch (inventoryError) {
+        console.error("❌ Error Updating Inventory:", inventoryError.response?.data || inventoryError);
+      }
+    } else {
+      console.error("❌ Invalid inputs for inventory update.");
     }
-
+    
     // ✅ Add Product to Collection (Fixed Mutation)
     if (collectionId) {
       console.log("🚀 Adding Product to Collection...");

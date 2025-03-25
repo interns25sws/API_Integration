@@ -19,73 +19,10 @@ const AddCustomer = () => {
     notes: "",
     tags: "",
     taxSettings: "Collect tax",
+    address: null,
   });
 
-  const [countries, setCountries] = useState([]);
-  const [states, setStates] = useState([]);
-  const [cities, setCities] = useState([]);
-
-  const [address, setAddress] = useState({
-    country: "India",
-    firstName: "",
-    lastName: "",
-    company: "",
-    address: "",
-    city: "",
-    state: "",
-    pinCode: "",
-    phone: "",
-  });
-
-  // Fetch countries
-  useEffect(() => {
-    const fetchCountries = async () => {
-      try {
-        const response = await axios.get("https://restcountries.com/v3.1/all");
-        const countryNames = response.data.map((country) => country.name.common).sort();
-        setCountries(countryNames);
-      } catch (error) {
-        console.error("Error fetching countries:", error);
-      }
-    };
-    fetchCountries();
-  }, []);
-
-  // Fetch states based on selected country
-  useEffect(() => {
-    if (!address.country) return;
-
-    const fetchStates = async () => {
-      try {
-        const response = await axios.post("https://countriesnow.space/api/v0.1/countries/states", {
-          country: address.country,
-        });
-        setStates(response.data.data.states.map((state) => state.name));
-        setCities([]); // Reset cities when country changes
-      } catch (error) {
-        console.error("Error fetching states:", error);
-      }
-    };
-    fetchStates();
-  }, [address.country]);
-
-  // Fetch cities based on selected state
-  useEffect(() => {
-    if (!address.state) return;
-
-    const fetchCities = async () => {
-      try {
-        const response = await axios.post("https://countriesnow.space/api/v0.1/countries/state/cities", {
-          country: address.country,
-          state: address.state,
-        });
-        setCities(response.data.data);
-      } catch (error) {
-        console.error("Error fetching cities:", error);
-      }
-    };
-    fetchCities();
-  }, [address.state]);
+ 
 
   // Handle input change for form fields
   const handleChange = (e) => {
@@ -95,45 +32,35 @@ const AddCustomer = () => {
     }));
   };
 
-  // Handle input change for address fields
-  const handleAddressChange = (e) => {
-    setAddress((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
-  };
-
+  
   // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    console.log("🔍 Raw Address Data:", JSON.stringify(address, null, 2));
+    console.log("🔍 Raw Address Data:", JSON.stringify(formData.address, null, 2));
 
-    const formattedAddress = {
-      firstName: address.firstName?.trim() || "",
-      lastName: address.lastName?.trim() || "",
-      company: address.company?.trim() || "",
-      address1: address.address?.trim() || "", 
-      city: address.city?.trim() || "",
-      province: address.state?.trim() || "", 
-      zip: address.pinCode?.trim() || address.pincode?.trim() || "",
-      country: address.country?.trim() || "",
-      phone: address.phone?.trim() || "",
-    };
+    const formattedAddress = formData.address
+      ? {
+          firstName: formData.address.firstName?.trim() || "",
+          lastName: formData.address.lastName?.trim() || "",
+          company: formData.address.company?.trim() || "",
+          address1: formData.address.address?.trim() || "",
+          city: formData.address.city?.trim() || "",
+          province: formData.address.state?.trim() || "",
+          zip: formData.address.pinCode?.trim() || formData.address.pincode?.trim() || "",
+          country: formData.address.country?.trim() || "",
+          phone: formData.address.phone?.trim() || "",
+        }
+      : null;
 
     console.log("📌 Cleaned Address:", JSON.stringify(formattedAddress, null, 2));
 
-    // Validate if at least one field is filled
-    const isValidAddress = Object.values(formattedAddress).some(value => value !== "");
-
+    const isValidAddress = formattedAddress && Object.values(formattedAddress).some((value) => value !== "");
     const filteredAddresses = isValidAddress ? [formattedAddress] : [];
 
-    console.log("📌 Filtered Addresses:", JSON.stringify(filteredAddresses, null, 2));
-
     if (filteredAddresses.length === 0) {
-      console.error("❌ No valid address found, skipping address field");
+      console.warn("⚠️ No valid address found, skipping address field");
     }
-
     const newCustomer = {
       firstName: formData.firstName.trim(),
       lastName: formData.lastName.trim(),
@@ -162,19 +89,21 @@ const AddCustomer = () => {
 
       const customerId = fullCustomerId.split("/").pop();
       console.log("✅ Extracted Customer ID:", customerId);
+   // 🔍 Check if redirected from Create Order page
+   const params = new URLSearchParams(window.location.search);
+   const redirectTo = params.get("redirectTo");
 
-      navigate(`/customers/${customerId}`);
-    } catch (error) {
-      console.error("❌ Error adding customer:", error.response?.data || error.message);
-
-      if (error.response?.data?.errors) {
-        alert(error.response.data.errors.map((err) => `${err.field}: ${err.message}`).join("\n"));
-      } else {
-        alert("Failed to create customer");
-      }
-    }
-  };
-   
+   if (redirectTo === "create-order") {
+     // Redirect to Create Order page with new customer
+     navigate(`/orders/create?customerId=${customerId}`);
+   } else {
+     navigate(`/customers/${customerId}`);
+   }
+ } catch (error) {
+   console.error("❌ Error adding customer:", error.response?.data || error.message);
+   alert("Failed to create customer");
+ }
+};
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header Section */}
@@ -318,7 +247,7 @@ const AddCustomer = () => {
     setFormData({ ...formData, address: updatedAddress });
     setShowAddressModal(false);
   }}
-  initialAddress={address}
+  initialAddress={formData.address}
 />
 
     </div>

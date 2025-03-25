@@ -55,20 +55,27 @@ const Orders = () => {
     }
   };
   
-  const handleCreateOrder = () => navigate("/create-order");
-
   const handleDeleteOrder = async (orderId) => {
-    if (!window.confirm("Are you sure you want to delete this order?")) return;
-
     try {
+      const confirmDelete = window.confirm("Are you sure you want to delete this order?");
+      if (!confirmDelete) return;
+  
+      console.log(`🗑️ Deleting order ${orderId}...`);
+  
       await axios.delete(`http://localhost:5000/api/orders/${orderId}`);
-      setOrders((prevOrders) => prevOrders.filter((order) => order.orderId !== orderId));
+  
+      alert("✅ Order deleted successfully!");
+  
+      // ✅ Re-fetch orders to update UI
+      fetchOrdersDirect();
+  
     } catch (error) {
       console.error("❌ Error deleting order:", error);
-      alert("Failed to delete order. Try again later.");
+      alert("⚠️ Failed to delete order!");
     }
   };
-
+  
+  
   const handleEditOrder = (order) => {
     console.log("Editing order:", order); // Check if order contains a valid ID
     setEditOrder({
@@ -135,10 +142,10 @@ const Orders = () => {
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold">Shopify Orders</h2>
         <button
-          onClick={handleCreateOrder}
-          className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition"
+          onClick={() => navigate("/orders/create")}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
-          <FaPlus /> Create Order
+          + Create Order
         </button>
       </div>
 

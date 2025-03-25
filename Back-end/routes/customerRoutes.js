@@ -9,141 +9,117 @@ const router = express.Router();
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const { limit = 10, cursor = null, page = 1 } = req.query; // Added page query for better pagination
+    const { limit = 10, cursor = null } = req.query;
     const { role, tags } = req.user;
-
-    console.log("🛠️ User Role:", role);
-    console.log("🔍 User Tags:", tags);
 
     if (!process.env.SHOPIFY_ACCESS_TOKEN || !process.env.SHOPIFY_GRAPHQL_URL) {
       return res.status(500).json({ error: "Missing Shopify API credentials" });
     }
 
-    // Construct GraphQL Query
-    const query = `
-      query GetCustomers($limit: Int!, $cursor: String) {
-        customers(first: $limit, after: $cursor) {
-          edges {
-            node {
-              id
-              firstName
-              lastName
-              email
-              tags
-              defaultAddress {
+    let customers = [];
+    let hasNextPage = true;
+    let nextCursor = cursor;
+
+    while (hasNextPage && customers.length < limit) {
+      const query = `
+        query GetCustomers($limit: Int!, $cursor: String) {
+          customers(first: $limit, after: $cursor) {
+            edges {
+              node {
                 id
-                address1
-                city
-                country
-              }
-              orders(first: 50) {
-                edges {
-                  node {
-                    totalPriceSet {
-                      shopMoney {
-                        amount
+                firstName
+                lastName
+                email
+                tags
+                defaultAddress {
+                  id
+                  address1
+                  city
+                  country
+                }
+                orders(first: 50) {
+                  edges {
+                    node {
+                      totalPriceSet {
+                        shopMoney {
+                          amount
+                        }
                       }
                     }
                   }
                 }
               }
+              cursor
             }
-            cursor
-          }
-          pageInfo {
-            hasNextPage
-            hasPreviousPage
+            pageInfo {
+              hasNextPage
+            }
           }
         }
-      }
-    `;
+      `;
 
-    // Fetch customers from Shopify
-    const response = await axios.post(
-      process.env.SHOPIFY_GRAPHQL_URL,
-      { query, variables: { limit: parseInt(limit), cursor } },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    console.log("📢 Shopify API Response:", JSON.stringify(response.data, null, 2));
-
-    if (response.data.errors) {
-      return res.status(400).json({ error: response.data.errors });
-    }
-
-    const customersData = response.data.data.customers;
-    let customers = customersData.edges.map(({ node, cursor }) => {
-      const orders = node.orders.edges;
-      const ordersCount = orders.length;
-      const amountSpent = orders.reduce(
-        (total, order) => total + parseFloat(order.node.totalPriceSet.shopMoney.amount),
-        0
+      // Fetch customers from Shopify
+      const response = await axios.post(
+        process.env.SHOPIFY_GRAPHQL_URL,
+        { query, variables: { limit: parseInt(limit), cursor: nextCursor } },
+        {
+          headers: {
+            "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+            "Content-Type": "application/json",
+          },
+        }
       );
 
-      return {
-        shopifyId: node.id,
-        firstName: node.firstName,
-        lastName: node.lastName,
-        email: node.email,
-        location: node.defaultAddress
-          ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
-          : "Unknown",
-        addressId: node.defaultAddress ? node.defaultAddress.id : null,
-        orders: ordersCount,
-        amountSpent: amountSpent.toFixed(2),
-        tags: node.tags || [],
-        cursor,
-      };
-    });
+      if (response.data.errors) {
+        return res.status(400).json({ error: response.data.errors });
+      }
 
-    console.log("📊 Total Customers Before Filtering:", customers.length);
-    console.log("📜 Customers Data:", JSON.stringify(customers, null, 2));
+      const customersData = response.data.data.customers;
+      hasNextPage = customersData.pageInfo.hasNextPage;
 
-    // 🔹 **Enforce Role-Based Access**
-    if (role === "sales-rep") {
-      console.log("🛠️ Sales Rep Tags:", tags);
-
-      // Ensure tags is an array
-      const repTags = Array.isArray(tags) ? tags : [];
-
-      // Filter customers based on tags
-      customers = customers.filter((customer) => {
-        console.log(`🔍 Checking Customer: ${customer.email}`);
-        console.log("📌 Customer Tags:", customer.tags);
-
-        // Convert all tags to lowercase for case-insensitive matching
-        const customerTags = customer.tags.map((tag) => tag.toLowerCase());
-        const hasMatchingTag = customerTags.some((tag) =>
-          repTags.includes(tag.toLowerCase())
+      // Process customers
+      const newCustomers = customersData.edges.map(({ node, cursor }) => {
+        const orders = node.orders.edges;
+        const amountSpent = orders.reduce(
+          (total, order) => total + parseFloat(order.node.totalPriceSet.shopMoney.amount),
+          0
         );
 
-        console.log(`✅ Match Found? ${hasMatchingTag}`);
-        return hasMatchingTag;
+        return {
+          shopifyId: node.id,
+          firstName: node.firstName,
+          lastName: node.lastName,
+          email: node.email,
+          location: node.defaultAddress
+            ? `${node.defaultAddress.city}, ${node.defaultAddress.country}`
+            : "Unknown",
+          orders: orders.length,
+          amountSpent: amountSpent.toFixed(2),
+          tags: node.tags || [],
+          cursor,
+        };
       });
 
-      console.log("🔍 Filtered Customers for Sales Rep:", customers);
+      // Apply role-based filtering
+      if (role === "sales-rep") {
+        const repTags = Array.isArray(tags) ? tags.map((tag) => tag.toLowerCase()) : [];
+        customers = [
+          ...customers,
+          ...newCustomers.filter((customer) =>
+            customer.tags.some((tag) => repTags.includes(tag.toLowerCase()))
+          ),
+        ];
+      } else {
+        customers = [...customers, ...newCustomers];
+      }
+
+      // Set the next cursor for pagination
+      nextCursor = customersData.edges.length > 0 ? customersData.edges[customersData.edges.length - 1].cursor : null;
     }
 
-    console.log("📊 Total Customers After Filtering:", customers.length);
-
-    // ✅ Apply Pagination After Filtering
-    const startIndex = (parseInt(page) - 1) * limit;
-    const paginatedCustomers = customers.slice(startIndex, startIndex + parseInt(limit));
-    const hasNextPage = startIndex + parseInt(limit) < customers.length;
-    const nextCursor =
-      hasNextPage && paginatedCustomers.length > 0
-        ? paginatedCustomers[paginatedCustomers.length - 1].cursor
-        : null;
-
     res.status(200).json({
-      customers: paginatedCustomers,
+      customers: customers.slice(0, limit), // Only return the requested limit
       hasNextPage,
-      hasPreviousPage: startIndex > 0,
       nextCursor,
     });
   } catch (error) {
@@ -273,17 +249,17 @@ router.post("/", async (req, res) => {
 
     console.log("📌 Received Data:", JSON.stringify(req.body, null, 2));
 
-    // ✅ Filter addresses: Remove empty fields
     const filteredAddresses = addresses?.map((addr) => ({
-      address1: addr.address1 || "",
-      city: addr.city || "",
-      province: addr.province || "",
-      country: addr.country || "",
-      zip: addr.zip || "",
-      phone: addr.phone || "",
-      company: addr.company || "",
-    })).filter(addr => addr.address1 || addr.city || addr.country || addr.zip) || []; // ✅ Ensures at least one valid address field exists
-
+      address1: addr.address1?.trim() || "",
+      address2: addr.address2?.trim() || "",
+      city: addr.city?.trim() || "",
+      province: addr.province?.trim() || "",
+      country: addr.country?.trim() || "",
+      zip: addr.zip?.trim() || "",
+      phone: addr.phone?.trim() || "",
+      company: addr.company?.trim() || "",
+    })).filter(addr => addr.address1 || addr.city || addr.country || addr.zip) || [];
+    
     const response = await axios.post(
       process.env.SHOPIFY_GRAPHQL_URL,
       {
@@ -483,6 +459,30 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
+router.get('/search', async (req, res) => {
+  const query = req.query.query;
+
+  if (!query) {
+    return res.status(400).json({ detail: "Query parameter is required" });
+  }
+
+  try {
+    // Construct the query for searching by email
+    const shopifyApiUrl = `https://bullvvark.myshopify.com/admin/api/2023-01/customers/search.json?query=email:${encodeURIComponent(query)}`;
+    
+    const response = await axios.get(shopifyApiUrl, {
+      headers: {
+      },
+    });
+
+    const customers = response.data.customers || [];
+    res.json(customers);
+  } catch (error) {
+    console.error("Error fetching customers from Shopify:", error.response ? error.response.data : error.message);
+    res.status(500).json({ detail: "Error fetching customers" });
+  }
+});
+
 
 
 export default router;
