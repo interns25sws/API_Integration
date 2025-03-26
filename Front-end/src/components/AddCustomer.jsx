@@ -89,21 +89,19 @@ const AddCustomer = () => {
 
       const customerId = fullCustomerId.split("/").pop();
       console.log("✅ Extracted Customer ID:", customerId);
-   // 🔍 Check if redirected from Create Order page
-   const params = new URLSearchParams(window.location.search);
-   const redirectTo = params.get("redirectTo");
 
-   if (redirectTo === "create-order") {
-     // Redirect to Create Order page with new customer
-     navigate(`/orders/create?customerId=${customerId}`);
-   } else {
-     navigate(`/customers/${customerId}`);
-   }
- } catch (error) {
-   console.error("❌ Error adding customer:", error.response?.data || error.message);
-   alert("Failed to create customer");
- }
-};
+      navigate(`/customers/${customerId}`);
+    } catch (error) {
+      console.error("❌ Error adding customer:", error.response?.data || error.message);
+
+      if (error.response?.data?.errors) {
+        alert(error.response.data.errors.map((err) => `${err.field}: ${err.message}`).join("\n"));
+      } else {
+        alert("Failed to create customer");
+      }
+    }
+  };
+   
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* Header Section */}

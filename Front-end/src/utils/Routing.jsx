@@ -13,7 +13,7 @@ import AddProduct from "../components/AddProducts";
 import Users from "../components/Users";
 import ForgotPassword from "../components/ForgotPassword";
 import ResetPassword from "../components/ResetPassword";
-
+import CreateDiscount from "../components/CreateDiscount";
 
 const Routing = () => {
   return (
@@ -36,7 +36,7 @@ const Routing = () => {
         <Route path="/customers/:id" element={<CustomerDetails />} />
         <Route path="/users" element={<Users />} />
         <Route path="/orders/create" element={<CreateOrder />} />
-
+        <Route path="/create-discounts" element={<CreateDiscount />} />  {/* Added new route */}
        
       </Route>
     </Routes>

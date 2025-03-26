@@ -45,45 +45,52 @@ const CreateOrder = () => {
     fetchOrders();
   }, []);
 
-  // Calculate subtotal
-  useEffect(() => {
-    if (!selectedProducts.length) {
-      setSubtotal(0);
-      setTax(0);
-      setTotal(0);
-      return;
-    }
+ // Calculate subtotal
+ useEffect(() => {
+  if (!selectedProducts.length) {
+    setSubtotal(0);
+    setTax(0);
+    setTotal(0);
+    return;
+  }
 
-    const sum = selectedProducts.reduce((acc, product) => {
-      return acc + (parseFloat(product.price) || 0) * (product.quantity || 1);
-    }, 0);
+  let sum = selectedProducts.reduce((acc, product) => {
+    return acc + (parseFloat(product.price) || 0) * (product.quantity || 1);
+  }, 0);
 
-    setSubtotal(sum);
-  }, [selectedProducts]);
+  setSubtotal(sum);
+}, [selectedProducts]);
 
-  // Apply discount and calculate total
-  useEffect(() => {
-    if (!subtotal) {
-      setTotal(0);
-      return;
-    }
+// Apply discount and calculate total
+useEffect(() => {
+  if (!subtotal) {
+    setTotal(0);
+    return;
+  }
 
-    let totalAmount = subtotal; // Start with subtotal
+  let totalAmount = subtotal; // Start with subtotal
 
-    if (discount && discount > 0) {
-      totalAmount -= discount; // Subtract discount
-    }
+  if (discount && discount > 0) {
+    totalAmount -= discount; // Subtract discount
+  }
 
-    // Prevent negative values
-    totalAmount = Math.max(0, totalAmount);
+  // Prevent negative values
+  totalAmount = Math.max(0, totalAmount);
 
-    // Recalculate tax (9% on the new total)
-    const taxRate = 0.09;
-    const newTax = totalAmount * taxRate;
+  // Recalculate tax (9% on the new total)
+  const taxRate = 0.09;
+  const newTax = totalAmount * taxRate;
 
-    setTax(newTax);
-    setTotal(totalAmount + newTax + shipping);
-  }, [subtotal, discount, shipping]);
+  console.log("🛒 Subtotal:", subtotal);
+  console.log("💰 Discount Applied:", discount);
+  console.log("🧾 Tax (9%):", newTax);
+  console.log("🚚 Shipping:", shipping);
+
+  setTax(newTax);
+  setTotal(totalAmount + newTax + shipping);
+
+  console.log("✅ Final Total:", totalAmount + newTax + shipping);
+}, [subtotal, discount, shipping]); // ✅ Added `discount` to dependencies
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -219,7 +226,33 @@ const CreateOrder = () => {
     }
   }, [customerId]);
   
-
+  const applyTagDiscount = async (tag) => {
+    try {
+      const url = `http://localhost:5000/api/discounts/discounts-by-tag?tag=${tag}`;
+      console.log("🔎 Fetching discount from:", url);
+  
+      const response = await fetch(url);
+      const text = await response.text();
+      console.log("📝 Raw API Response:", text);
+  
+      const data = JSON.parse(text);
+      console.log("✅ Parsed Discount Data:", data);
+  
+      if (data && data.discountPercent !== undefined) {
+        const discountPercentage = Number(data.discountPercent);
+        const calculatedDiscount = (subtotal * discountPercentage) / 100;
+  
+        setDiscount(calculatedDiscount);
+        console.log(`✅ Discount Applied: ₹${calculatedDiscount} (${discountPercentage}%)`);
+      } else {
+        console.warn("⚠️ No discount found for this tag");
+        setDiscount(0);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching discount:", error);
+      setDiscount(0);
+    }
+  };
   // Fetch Customer Data when a customerId is provided
   const fetchCustomer = async (id) => {
     try {
@@ -322,7 +355,7 @@ const CreateOrder = () => {
           </div>
 
           {/* Tags Section */}
-          <TagSection tags={tags} setTags={setTags} />
+          <TagSection tags={tags} setTags={setTags} applyTagDiscount={applyTagDiscount} />
         </div>
       </div>
        {/* Custom Item Modal */}

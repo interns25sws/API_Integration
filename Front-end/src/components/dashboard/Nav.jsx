@@ -2,14 +2,24 @@ import React, { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { Search, Bell, User } from "lucide-react";
 import { FaUser, FaLock, FaQuestionCircle, FaSignOutAlt } from "react-icons/fa";
+import ConnectAppModal from "../ConnectAppModal";
+
 
 
 function Nav() {
 
   const [user, setUser] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [apps, setApps] = useState([]);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  const handleSaveApp = (newApp) => {
+    // Save app credentials (later, we will send this to the backend)
+    setApps([...apps, newApp]);
+    localStorage.setItem("apps", JSON.stringify([...apps, newApp]));
+  };
 
   useEffect(() => {
     // Get user from localStorage
@@ -101,17 +111,33 @@ function Nav() {
                     Customers
         </NavLink>
         <NavLink
-          to="/users"
-          className={({ isActive }) =>
-               [
-                 "font-medium px-3 py-1 rounded-lg transition",
-                  isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-               ].join(" ")
-                 }
-                 >
-               {user?.role === "super-admin" && "Users"}
+            to="/users"
+            className={({ isActive }) =>
+             [
+             "font-medium px-3 py-1 rounded-lg transition",
+               isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
+             ].join(" ")
+                 }      
+        > 
+           {(user?.role === "super-admin" || user?.role === "admin") && "Users"}
         </NavLink>
-
+        <NavLink
+           to="/create-discounts"
+           className={({ isActive }) =>
+                  [
+                   "font-medium px-3 py-1 rounded-lg transition",
+                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
+                  ].join(" ")
+                    }
+                    >
+                    Discounts
+        </NavLink>
+        <button
+        onClick={() => setShowModal(true)}
+        className="bg-green-500 text-white px-4 py-2 rounded mt-4"
+      >
+        + Connect New App
+      </button>
 
       </div>
 
@@ -162,6 +188,21 @@ function Nav() {
             </ul>
           </div>
         )}
+         {/* 🔹 Modal for Adding API Credentials */}
+      {showModal && <ConnectAppModal onClose={() => setShowModal(false)} onSave={handleSaveApp} />}
+
+{/* 🔹 List Connected Apps */}
+<div className="mt-4">
+        <h2 className="text-lg font-semibold">Connected Apps:</h2>
+        <ul className="mt-2">
+          {apps.map((app, index) => (
+            <li key={index} className="bg-gray-100 p-2 rounded mb-2">
+              {app.appName} (API Key: {app.apiKey})
+            </li>
+          ))}
+        </ul>
+      </div>
+
       </div>
     </nav>
   );

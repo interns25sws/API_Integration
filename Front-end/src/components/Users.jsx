@@ -12,6 +12,7 @@ const Users = () => {
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
+const loggedInUser = JSON.parse(localStorage.getItem("user")) || {};
 
   useEffect(() => {
     fetchUsers();
@@ -26,13 +27,31 @@ const Users = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/user/users");
+      const user = JSON.parse(localStorage.getItem("user")); // Get logged-in user
+      if (!user) {
+        console.error("User not found in localStorage");
+        return;
+      }
+  
+      const response = await fetch(`http://localhost:5000/api/user/users?role=${user.role}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.token}`, // If using JWT authentication
+        },
+      });
+  
+      if (!response.ok) {
+        throw new Error(`HTTP Error! Status: ${response.status}`);
+      }
+  
       const data = await response.json();
       setUsers(data);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
   };
+  
 
   const handleView = (user) => {
     setSelectedUser(user);
@@ -343,11 +362,21 @@ useEffect(() => {
               {errors.password && <p className="text-red-500">{errors.password.message}</p>}
 
               <label className="block font-semibold">Role:</label>
-              <select {...register("role", { required: "Role is required" })} className="border p-2 w-full mb-2">
-                <option value="admin">Admin</option>
-                <option value="sales-rep">Sales Rep</option>
-              </select>
-              {errors.role && <p className="text-red-500">{errors.role.message}</p>}
+<select
+  {...register("role", { required: "Role is required" })}
+  className="border p-2 w-full mb-2"
+>
+  {loggedInUser?.role === "super-admin" ? (
+    <>
+      <option value="admin">Admin</option>
+      <option value="sales-rep">Sales Rep</option>
+    </>
+  ) : (
+    <option value="sales-rep">Sales Rep</option> // Admins can only create Sales Reps
+  )}
+</select>
+{errors.role && <p className="text-red-500">{errors.role.message}</p>}
+
 
               <label className="block font-semibold">Tags (Super Admin Only):</label>
               <div className="flex items-center gap-2">

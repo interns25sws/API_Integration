@@ -119,45 +119,60 @@ router.get("/profile", authMiddleware, async (req, res) => {
 
 router.get("/users", async (req, res) => {
   try {
-    const users = await User.find({ role: { $in: ["admin", "sales-rep"] } });
+    const { role } = req.query; // Get logged-in user's role from request
+
+    let filter = {};
+    if (role === "admin") {
+      filter = { role: "sales-rep" }; // Admins only see Sales Reps
+    } else if (role === "super-admin") {
+      filter = { role: { $in: ["admin", "sales-rep"] } }; // Super Admin sees only Admins & Sales Reps
+    } else {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const users = await User.find(filter);
     res.status(200).json(users);
   } catch (error) {
     res.status(500).json({ message: "Error fetching users", error });
   }
 });
 
-
-
-// 🔹 DELETE user by ID
+// 🔹 DELETE User by ID
 router.delete("/delete/:id", async (req, res) => {
   try {
-    const deletedUser = await User.findByIdAndDelete(req.params.id);
+    const user = await User.findById(req.params.id);
 
-    if (!deletedUser) {
+    if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    if (user.role === "super-admin") {
+      return res.status(403).json({ message: "Cannot delete Super Admin" });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
     res.json({ message: "User deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Error deleting user", error });
   }
 });
 
+// 🔹 UPDATE User by ID
 router.put("/update/:id", async (req, res) => {
   try {
     const { name, email, role, tags } = req.body;
     const userId = req.params.id;
 
-    console.log("🔍 Update Request Received for User ID:", userId);
-    console.log("🛠️ Update Data:", { name, email, role, tags });
-
-    // 🔹 Fetch current user data
     const currentUser = await User.findById(userId);
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // 🔹 Check if the email is being changed
+    if (role === "super-admin") {
+      return res.status(403).json({ message: "Cannot assign Super Admin role" });
+    }
+
+    // Check if email already exists
     if (email !== currentUser.email) {
       const existingUser = await User.findOne({ email });
       if (existingUser) {
@@ -172,22 +187,16 @@ router.put("/update/:id", async (req, res) => {
     currentUser.tags = tags;
 
     await currentUser.save();
-
-    console.log("✅ Updated User:", JSON.stringify(currentUser, null, 2));
-
     res.json({ message: "User updated successfully", user: currentUser });
   } catch (error) {
-    console.error("❌ Error updating user:", error);
-    res.status(500).json({ message: "Error updating user" });
+    res.status(500).json({ message: "Error updating user", error });
   }
 });
 
+// 🔹 ADD User
 router.post("/add", async (req, res) => {
   try {
     const { name, email, password, role, tags } = req.body;
-
-    console.log("🔍 Add User Request Received");
-    console.log("🛠️ Data to be Inserted:", { name, email, password, role, tags });
 
     if (role === "super-admin") {
       return res.status(403).json({ message: "Cannot create a Super Admin" });
@@ -199,7 +208,7 @@ router.post("/add", async (req, res) => {
       return res.status(400).json({ message: "Email already exists" });
     }
 
-    // Check if any of the provided tags already exist in another user
+    // Check if any tags already exist in another user
     const existingTag = await User.findOne({ tags: { $in: tags } });
     if (existingTag) {
       return res.status(400).json({ message: `Tag(s) already exist: ${existingTag.tags}` });
@@ -209,12 +218,33 @@ router.post("/add", async (req, res) => {
     const newUser = new User({ name, email, password: hashedPassword, role, tags });
     await newUser.save();
 
-    console.log("✅ New User Created:", JSON.stringify(newUser, null, 2));
-
     res.status(201).json({ message: "User created", user: newUser });
   } catch (error) {
-    console.error("❌ Error creating user:", error);
-    res.status(500).json({ message: "Error creating user" });
+    res.status(500).json({ message: "Error creating user", error });
+  }
+});
+// Fetch all unique user tags
+router.get("/tags", async (req, res) => {
+  try {
+    const users = await User.find(
+      { tags: { $exists: true, $ne: [] } }, // Fetch only users with tags
+      { tags: 1, _id: 0 }
+    );
+
+    console.log("Users with Tags:", users); // ✅ Debugging Output
+
+    // Extract and filter tags properly
+    const filteredTags = users
+      .map((user) => user.tags) // ✅ Extract just the tags array
+      .flat() // ✅ Flatten the array
+      .filter((tag) => typeof tag === "string" && tag.trim().length > 0); // ✅ Ensure each tag is a valid string
+
+    console.log("Extracted Tags:", filteredTags); // ✅ Corrected Debugging Output
+
+    res.json([...new Set(filteredTags)]); // ✅ Remove duplicates & send response
+  } catch (error) {
+    console.error("❌ Error fetching tags:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

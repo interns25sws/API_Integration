@@ -1,12 +1,16 @@
 import React, { useState } from "react";
 
-const TagSection = ({ tags, setTags }) => {
+const TagSection = ({ tags, setTags, applyTagDiscount }) => {
   const [tagInput, setTagInput] = useState(""); // Local state for the input field
 
   const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
+    const newTag = tagInput.trim();
+    if (newTag && !tags.includes(newTag)) {
+      setTags([...tags, newTag]);
       setTagInput(""); // Clear input after adding
+
+      // ✅ Apply discount for the newly added tag
+      applyTagDiscount(newTag);
     }
   };
 

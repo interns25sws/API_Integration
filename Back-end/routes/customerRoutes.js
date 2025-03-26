@@ -459,31 +459,47 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
-router.get('/search', async (req, res) => {
-  const query = req.query.query;
-
-  if (!query) {
-    return res.status(400).json({ detail: "Query parameter is required" });
-  }
-
+router.get("/search", async (req, res) => {
   try {
-    // Construct the query for searching by email
-    const shopifyApiUrl = `https://bullvvark.myshopify.com/admin/api/2023-01/customers/search.json?query=email:${encodeURIComponent(query)}`;
-    
-    const response = await axios.get(shopifyApiUrl, {
-      headers: {
-      },
-    });
+    const { query } = req.query;
+    console.log("🔍 Searching Customers for:", query);  // Debugging log
 
-    const customers = response.data.customers || [];
+    if (!query) {
+      // 🛑 Don't send an invalid request to Shopify
+      return res.json([]);
+    }
+
+    // 🔥 Shopify GraphQL Query to Search Customers
+    const SHOPIFY_QUERY = `
+      query {
+        customers(first: 10, query: "${query}") {
+          edges {
+            node {
+              id
+              firstName
+              lastName
+              email
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await fetchShopify(SHOPIFY_QUERY);
+    
+    if (response.errors) {
+      console.error("❌ Shopify Error:", response.errors);
+      return res.status(400).json({ message: "Error fetching customers from Shopify" });
+    }
+
+    const customers = response.data.customers.edges.map(edge => edge.node);
     res.json(customers);
+    
   } catch (error) {
-    console.error("Error fetching customers from Shopify:", error.response ? error.response.data : error.message);
-    res.status(500).json({ detail: "Error fetching customers" });
+    console.error("❌ Error fetching customers:", error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
-
-
 
 export default router;
 
