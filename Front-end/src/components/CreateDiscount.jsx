@@ -46,8 +46,7 @@ export default function CreateDiscount() {
   }, []);
 
   const onSubmit = async (data) => {
-    console.log("🔥 Saving Discount Data:", data); // Log the full received data for debugging
-  
+    console.log("🔥 Saving Discount Data:", data); 
     // Ensure selectedTags is always an array
     const selectedTags = Array.isArray(data.selectedTags) ? data.selectedTags : [];
   
