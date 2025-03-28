@@ -5,6 +5,7 @@ import axios from "axios";
 
 const discountTypes = [
   "Tag-Based Discount",
+  "Bulk Discount", // ✅ Added Bulk Discount Option
   "Time-Sensitive Discount",
   "Loyalty Discount",
   "First Order Discount",
@@ -44,54 +45,71 @@ export default function CreateDiscount() {
       });
   }, []);
 
-  // Handle form submission
   const onSubmit = async (data) => {
-    console.log("Saving Discount Data:", data);
-
-    if (!data.selectedTags || data.selectedTags.length === 0) {
+    console.log("🔥 Saving Discount Data:", data); // Log the full received data for debugging
+  
+    // Ensure selectedTags is always an array
+    const selectedTags = Array.isArray(data.selectedTags) ? data.selectedTags : [];
+  
+    // Validate Tag-Based Discount
+    if (selectedType === "Tag-Based Discount" && selectedTags.length === 0) {
       alert("Please select at least one tag.");
       return;
     }
-
+  
+    // Validate Bulk Discount
+    const minQuantity = Number(data.minQuantity);
+    if (selectedType === "Bulk Discount" && (!minQuantity || minQuantity <= 1)) {
+      alert("Minimum quantity for bulk discounts must be greater than 1.");
+      return;
+    }
+  
+    // Construct request payload dynamically
+    const discountPayload = {
+      type: selectedType,
+      discountType: discountType,
+      discountValue: Number(data.discountValue),
+      ...(selectedType === "Tag-Based Discount" && { selectedTags }),
+      ...(selectedType === "Bulk Discount" && { minQuantity }),
+    };
+  
+    console.log("📤 Sending Payload:", discountPayload); // Debugging Log
+  
     try {
       const response = await fetch("http://localhost:5000/api/discounts/save-discount", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type: data.type,
-          discountType: data.discountType,
-          discountValue: Number(data.discountValue),
-          selectedTags: data.selectedTags,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(discountPayload),
       });
-
+  
       const result = await response.json();
-
+  
       if (!response.ok) {
-        alert(result.error || "Error saving discount"); // ✅ Show error from backend
+        alert(result.error || "Error saving discount");
+        console.error("❌ Backend Error:", result);
         return;
       }
-
-      console.log("Server Response:", result);
-
+  
+      console.log("✅ Server Response:", result);
+  
+      // Update saved discounts list
       setSavedDiscounts((prevDiscounts) => [
         ...prevDiscounts,
         {
           id: Date.now(),
-          type: data.type,
-          discountType: data.discountType,
+          type: selectedType,
+          discountType: discountType,
           discountValue: data.discountValue,
-          tags: data.selectedTags,
+          tags: selectedType === "Tag-Based Discount" ? selectedTags : undefined,
+          minQuantity: selectedType === "Bulk Discount" ? minQuantity : undefined,
         },
       ]);
     } catch (error) {
-      console.error("Fetch error:", error);
+      console.error("❌ Fetch error:", error);
       alert("Something went wrong. Please try again.");
     }
   };
-
+  
   const handleTagChange = (selectedOptions) => {
     const selectedTags = selectedOptions.map((option) => option.value);
     setValue("selectedTags", selectedTags);
@@ -123,19 +141,34 @@ export default function CreateDiscount() {
 
         {/* Tag Selection (Only for Tag-Based Discount) */}
         {selectedType === "Tag-Based Discount" && (
+  <div>
+    <label className="block font-medium mb-1">Applicable Tags</label>
+    {loadingTags ? (
+      <p>Loading tags...</p>
+    ) : (
+      <CreatableSelect
+        isMulti
+        options={tags}
+        onChange={handleTagChange}
+        className="w-full border rounded"
+        placeholder="Select or enter new tags"
+      />
+    )}
+  </div>
+)}
+
+
+        {/* Minimum Quantity Input (Only for Bulk Discount) */}
+        {selectedType === "Bulk Discount" && (
           <div>
-            <label className="block font-medium mb-1">Applicable Tags</label>
-            {loadingTags ? (
-              <p>Loading tags...</p>
-            ) : (
-              <CreatableSelect
-                isMulti
-                options={tags} // ✅ Already mapped in useEffect
-                onChange={handleTagChange} // ✅ Make sure the function is defined
-                className="w-full border rounded"
-                placeholder="Select or enter new tags"
-              />
-            )}
+            <label className="block font-medium mb-1">Minimum Quantity for Bulk Discount</label>
+            <input
+              type="number"
+              placeholder="Enter minimum quantity"
+              {...register("minQuantity")}
+              className="w-full p-2 border rounded"
+              min="2" // Ensure it's greater than 1
+            />
           </div>
         )}
 
@@ -158,17 +191,11 @@ export default function CreateDiscount() {
         {/* Discount Value Input */}
         <div>
           <label className="block font-medium mb-1">
-            {discountType === "percentage"
-              ? "Discount Percentage (%)"
-              : "Fixed Discount Amount"}
+            {discountType === "percentage" ? "Discount Percentage (%)" : "Fixed Discount Amount"}
           </label>
           <input
             type="number"
-            placeholder={
-              discountType === "percentage"
-                ? "Enter % discount"
-                : "Enter fixed amount"
-            }
+            placeholder={discountType === "percentage" ? "Enter % discount" : "Enter fixed amount"}
             {...register("discountValue")}
             className="w-full p-2 border rounded"
           />
@@ -192,6 +219,7 @@ export default function CreateDiscount() {
               <tr className="bg-gray-200">
                 <th className="border p-2">Type</th>
                 <th className="border p-2">Tags</th>
+                <th className="border p-2">Min Qty</th>
                 <th className="border p-2">Discount Type</th>
                 <th className="border p-2">Value</th>
               </tr>
@@ -200,15 +228,10 @@ export default function CreateDiscount() {
               {savedDiscounts.map((discount) => (
                 <tr key={discount.id} className="border">
                   <td className="border p-2">{discount.type}</td>
-                  <td className="border p-2">
-                    {discount.tags?.join(", ") || "N/A"}
-                  </td>
+                  <td className="border p-2">{discount.tags?.join(", ") || "N/A"}</td>
+                  <td className="border p-2">{discount.minQuantity || "-"}</td>
                   <td className="border p-2">{discount.discountType}</td>
-                  <td className="border p-2">
-                    {discount.discountType === "percentage"
-                      ? `${discount.discountValue}%`
-                      : `$${discount.discountValue}`}
-                  </td>
+                  <td className="border p-2">{discount.discountType === "percentage" ? `${discount.discountValue}%` : `$${discount.discountValue}`}</td>
                 </tr>
               ))}
             </tbody>

@@ -14,7 +14,7 @@ const CreateOrder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const customerId = searchParams.get("customerId"); // Get customerId from URL
-  const [tax, setTax] = useState(0);
+  // const [tax, setTax] = useState(0);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -33,6 +33,7 @@ const CreateOrder = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [isLocked, setIsLocked] = useState(false); // ✅ Ensure isLocked is defined
+  const [bulkDiscount, setBulkDiscount] = useState(0);
 
 
   useEffect(() => {
@@ -41,15 +42,33 @@ const CreateOrder = () => {
     }
   }, [isProductModalOpen]);
 
+  // useEffect(() => {
+  //   fetchOrders();
+  // }, []);
   useEffect(() => {
-    fetchOrders();
-  }, []);
-
+    const totalQuantity = selectedProducts.reduce((sum, product) => sum + (product.quantity || 1), 0);
+  
+    if (totalQuantity >= 5) { // Fetch discount only if 5+ products
+      fetchBulkDiscount(totalQuantity);
+    } else {
+      setBulkDiscount(0); // Reset if below threshold
+    }
+  }, [selectedProducts]);
+  
+  const fetchBulkDiscount = async (quantity) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/discounts/discounts-by-quantity?quantity=${quantity}`);
+      const data = await response.json();
+      setBulkDiscount(data.discountPercent || 0);
+    } catch (error) {
+      console.error("❌ Error fetching bulk discount:", error);
+    }
+  };
  // Calculate subtotal
  useEffect(() => {
   if (!selectedProducts.length) {
     setSubtotal(0);
-    setTax(0);
+    // setTax(0);
     setTotal(0);
     return;
   }
@@ -70,27 +89,28 @@ useEffect(() => {
 
   let totalAmount = subtotal; // Start with subtotal
 
+  // Apply tag discount
   if (discount && discount > 0) {
-    totalAmount -= discount; // Subtract discount
+    totalAmount -= discount;
+  }
+
+  // Apply bulk discount
+  if (bulkDiscount > 0) {
+    const bulkDiscountAmount = (totalAmount * bulkDiscount) / 100;
+    totalAmount -= bulkDiscountAmount;
+    console.log(`📢 Bulk Discount Applied: ₹${bulkDiscountAmount} (${bulkDiscount}%)`);
   }
 
   // Prevent negative values
   totalAmount = Math.max(0, totalAmount);
 
-  // Recalculate tax (9% on the new total)
-  const taxRate = 0.09;
-  const newTax = totalAmount * taxRate;
+  // // Recalculate tax (9% on the new total)
+  // const taxRate = 0.09;
+  // const newTax = totalAmount * taxRate;
 
-  console.log("🛒 Subtotal:", subtotal);
-  console.log("💰 Discount Applied:", discount);
-  console.log("🧾 Tax (9%):", newTax);
-  console.log("🚚 Shipping:", shipping);
-
-  setTax(newTax);
-  setTotal(totalAmount + newTax + shipping);
-
-  console.log("✅ Final Total:", totalAmount + newTax + shipping);
-}, [subtotal, discount, shipping]); // ✅ Added `discount` to dependencies
+  // setTax(newTax);
+  setTotal(totalAmount  + shipping);
+}, [subtotal, discount, bulkDiscount, shipping]);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -109,26 +129,26 @@ useEffect(() => {
     setLoading(false);
   };
 
-  const fetchOrders = async () => {
-    try {
-      const response = await fetch("http://localhost:5000/api/orders/fetch-orders-direct", {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`, // Ensure the token is stored in localStorage
-          "Content-Type": "application/json",
-        },
-      });
+  // const fetchOrders = async () => {
+  //   try {
+  //     const response = await fetch("http://localhost:5000/api/orders/fetch-orders-direct", {
+  //       method: "GET",
+  //       headers: {
+  //         "Authorization": `Bearer ${localStorage.getItem("token")}`, // Ensure the token is stored in localStorage
+  //         "Content-Type": "application/json",
+  //       },
+  //     });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
+  //     if (!response.ok) {
+  //       throw new Error(`HTTP error! Status: ${response.status}`);
+  //     }
 
-      const data = await response.json();
-      console.log("✅ Orders fetched:", data);
-    } catch (error) {
-      console.error("❌ Error fetching orders:", error.message);
-    }
-  };
+  //     const data = await response.json();
+  //     console.log("✅ Orders fetched:", data);
+  //   } catch (error) {
+  //     console.error("❌ Error fetching orders:", error.message);
+  //   }
+  // };
 
   const handleProductSelect = (newProducts) => {
     setSelectedProducts((prevProducts) => {
@@ -144,64 +164,7 @@ useEffect(() => {
     setIsCustomItemModalOpen(false);
   };
 
-  const handleCreateOrder = async () => {
-    if (!selectedProducts.length) {
-      alert("Please add at least one product.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      console.log("🔥 Selected Products:", selectedProducts); // Debugging line
-      
-      if (!selectedProducts || selectedProducts.length === 0) {
-        alert("❌ No products selected!");
-        return;
-      }
-    
-      const orderData = {
-        line_items: selectedProducts.map((p) => ({
-          variant_id: p.variant_id || null,
-          title: p.title,
-          price: parseFloat(p.price) || 0,
-          quantity: p.quantity || 1,
-        })),
-        customer_id: selectedCustomer?.id || null,
-        note: notes,
-        tags: tags.join(", "),
-        total_price: total,
-      };
-    
-      console.log("🚀 Sending Order Data:", orderData); // Debugging line
-    
-      const response = await fetch("http://localhost:5000/api/orders/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderData),
-      });
-    
-      const responseData = await response.json();
-    
-      if (!response.ok) {
-        throw new Error(responseData.error || "Failed to create order");
-      }
-    
-      alert("🎉 Order created successfully!");
-    
-      // Reset form
-      setSelectedProducts([]);
-      setDiscount(0);
-      setNotes("");
-      setTags([]);
-    } catch (error) {
-      console.error("❌ Error creating order:", error);
-      alert("Failed to create order. Check console for details.");
-    } finally {
-      setLoading(false);
-    }
-    
-  };
+ 
 
   const handleUpdateQuantity = (productId, newQuantity) => {
     setSelectedProducts((prevProducts) =>
@@ -219,14 +182,14 @@ useEffect(() => {
     );
   };
 
-  useEffect(() => {
-    console.log("🔎 Extracted customerId from URL:", customerId);
-    if (customerId && customerId !== "search") {
-      fetchCustomer(customerId);
+ 
+  const applyTagDiscount = async (tag, isRemoving = false) => {
+    if (isRemoving) {
+      setDiscount(0); // ❌ Remove discount when tag is removed
+      console.log(`🗑️ Tag "${tag}" removed. Discount reset.`);
+      return;
     }
-  }, [customerId]);
   
-  const applyTagDiscount = async (tag) => {
     try {
       const url = `http://localhost:5000/api/discounts/discounts-by-tag?tag=${tag}`;
       console.log("🔎 Fetching discount from:", url);
@@ -253,6 +216,13 @@ useEffect(() => {
       setDiscount(0);
     }
   };
+  useEffect(() => {
+    console.log("🔎 Extracted customerId from URL:", customerId);
+    if (customerId && customerId !== "search") {
+      fetchCustomer(customerId);
+    }
+  }, [customerId]);
+  
   // Fetch Customer Data when a customerId is provided
   const fetchCustomer = async (id) => {
     try {
@@ -280,11 +250,84 @@ useEffect(() => {
   };
 
   const handleSelectCustomer = (customer) => {
-    setSearchTerm(customer.email);
-    setSelectedCustomer(customer);
+    console.log("✅ Customer Selected:", customer);
+    setSearchTerm(`${customer.firstName} ${customer.lastName}`);
     setShowDropdown(false);
+    setSelectedCustomer(customer); // Make sure selectedCustomer is updated
   };
+  
+  
+  const handleCreateOrder = async () => {
+    // Ensure products are selected before proceeding
+    if (!selectedProducts.length) {
+      alert("Please add at least one product.");
+      return;
+    }
+  
+    // Set loading state
+    setLoading(true);
+  
+    try {
+      console.log("🔥 Selected Products:", selectedProducts); // Log selected products for debugging
+      console.log("🛒 Selected Customer before order:", selectedCustomer);
 
+      // Prepare order data
+      const orderData = {
+        line_items: selectedProducts.map((p) => ({
+          variant_id: p.variant_id || null,
+          title: p.title,
+          price: parseFloat(p.price) || 0,
+          quantity: p.quantity || 1,
+        })),
+        // Ensure customer is selected and shopifyId is properly extracted
+        customer: selectedCustomer?.shopifyId 
+        ? { id: selectedCustomer.shopifyId } 
+        : selectedCustomer?.id?.startsWith("gid://shopify/Customer/") 
+          ? { id: selectedCustomer.id } 
+          : null,
+      
+       // If no customer, set as null
+        tags: tags.join(", "), // Join tags into a string if necessary
+        total_price: total, // Ensure `total` is calculated correctly
+      };
+  
+      console.log("🚀 Sending Order Data:", orderData); // Log order data for debugging
+  
+      // Make the request to create the order
+      const response = await fetch("http://localhost:5000/api/orders/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      });
+  
+      // Parse the response data
+      const responseData = await response.json();
+  
+      // Check for errors
+      if (!response.ok) {
+        throw new Error(responseData.error || "Failed to create order");
+      }
+  
+      alert("🎉 Order created successfully!");
+  
+      // Reset the form after successful order creation
+      setSelectedProducts([]);
+      setDiscount(0);
+      setNotes("");
+      setTags([]);
+      setSelectedCustomer(null); // Reset customer after order
+      setSearchTerm(""); // Clear search field
+      
+      navigate("/orders"); // Change this to your actual order page route
+
+    } catch (error) {
+      console.error("❌ Error creating order:", error);
+      alert("Failed to create order. Check console for details.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   return (
     <div className="m-5 p-6 bg-gray-100 min-h-screen">
       <div className="flex justify-between items-center mb-4">
@@ -313,7 +356,9 @@ useEffect(() => {
           </div>
 
           {/* Payment Summary */}
-          <PaymentSummary subtotal={subtotal} discount={discount} shipping={shipping} tax={tax} total={total} selectedProducts={selectedProducts} />
+
+          <PaymentSummary bulkDiscount={bulkDiscount} subtotal={subtotal} discount={discount} shipping={shipping}  total={total} selectedProducts={selectedProducts} />
+          
         </div>
 
         {/* Right Side: Notes, Customers, Market & Tags */}

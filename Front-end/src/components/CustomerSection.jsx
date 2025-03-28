@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { useNavigate, useLocation} from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
 const CustomerSection = ({
@@ -9,15 +9,14 @@ const CustomerSection = ({
   setShowDropdown,
   handleSelectCustomer,
   selectedCustomer,
-  isLocked, // Lock customer selection
+  isLocked,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dropdownRef = useRef(null);
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState([]); // Store all customers
+  const [filteredCustomers, setFilteredCustomers] = useState([]); // Store filtered results
   const [loading, setLoading] = useState(false);
-  const debounceRef = useRef(null);
-  const lastQueryRef = useRef(""); // Store last searched term to prevent redundant API calls
 
   // ✅ Close dropdown when clicking outside
   useEffect(() => {
@@ -29,46 +28,58 @@ const CustomerSection = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  
 
-  // ✅ Fetch customers from Shopify when searchTerm changes (debounced)
+  // ✅ Fetch all customers from Shopify on mount (only once)
   useEffect(() => {
-    const trimmedSearch = (searchTerm || "").trim(); // ✅ Prevents undefined error
-  
-    if (!trimmedSearch || trimmedSearch.length < 2) {
-      setCustomers([]);
-      return;
-    }
-  
-    // Prevent fetching the same query multiple times
-    if (lastQueryRef.current === trimmedSearch) return;
-    lastQueryRef.current = trimmedSearch;
-  
-    setLoading(true);
-  
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-  
-    debounceRef.current = setTimeout(async () => {
+    const fetchAllCustomers = async () => {
       try {
+        setLoading(true);
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.error("❌ No Token Found in Local Storage!");
+          return;
+        }
+
         const response = await axios.get(
-          `http://localhost:5000/api/customers`
+          `http://localhost:5000/api/customers`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
-        
-        setCustomers(response.data || []);
+
+        const customerList = response.data.customers || [];
+        setCustomers(customerList);
+        setFilteredCustomers(customerList); // Show all customers initially
       } catch (error) {
-        console.error("Error fetching customers:", error);
+        console.error(
+          "❌ Error fetching customers:",
+          error.response?.data || error.message
+        );
         setCustomers([]);
       } finally {
         setLoading(false);
       }
-    }, 500);
-  
-    return () => clearTimeout(debounceRef.current);
-  }, [searchTerm]);
-   // ✅ Check if there's a new customer in the URL
-   useEffect(() => {
+    };
+
+    fetchAllCustomers();
+  }, []);
+
+  // ✅ Filter customers on typing (without API calls)
+  useEffect(() => {
+    if (searchTerm.trim() === "") {
+      setFilteredCustomers(customers); // Show all customers when empty
+    } else {
+      const filtered = customers.filter((customer) =>
+        `${customer.firstName} ${customer.lastName}`
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      );
+      setFilteredCustomers(filtered);
+    }
+  }, [searchTerm, customers]);
+
+  // ✅ Auto-Select Customer if URL has `customerId`
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
     const customerId = params.get("customerId");
 
@@ -79,7 +90,16 @@ const CustomerSection = ({
 
   const fetchCustomerById = async (id) => {
     try {
-      const response = await axios.get(`/api/customers/${id}`);
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await axios.get(
+        `http://localhost:5000/api/customers/${id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
       if (response.status === 200) {
         handleSelectCustomer(response.data);
         setSearchTerm(`${response.data.firstName} ${response.data.lastName}`);
@@ -88,35 +108,34 @@ const CustomerSection = ({
       console.error("Error fetching customer:", error);
     }
   };
-
+  useEffect(() => {
+    console.log("Selected Customer in CreateOrder (before passing to CustomerSection):", selectedCustomer);
+  }, [selectedCustomer]);
   
-
+  useEffect(() => {
+    console.log("Selected Customer in CustomerSection (received):", selectedCustomer);
+  }, [selectedCustomer]);
+  
   return (
     <div className="relative bg-white p-4 rounded-lg shadow">
       <h3 className="text-lg font-semibold mb-2">Customers</h3>
 
-      {/* 🔹 Disable search if customer is locked */}
       <div className="relative">
         <input
           type="text"
-          placeholder="Search or create a customer"
+          placeholder="Search or select a customer"
           value={searchTerm}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (typeof setSearchTerm === "function") {
-              setSearchTerm(value);
-            } else {
-              console.error("setSearchTerm is not a function", setSearchTerm);
-            }
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onFocus={() => {
+            setShowDropdown(true); // Show dropdown when clicking input
+            setFilteredCustomers(customers); // Reset to full list
           }}
-          onFocus={() => setShowDropdown(true)}
           disabled={isLocked}
           className={`w-full px-3 py-2 border rounded-md ${
             isLocked ? "bg-gray-200 cursor-not-allowed" : ""
           }`}
         />
-        
-        {/* ✅ Show a loading spinner inside the input field when fetching customers */}
+
         {loading && (
           <div className="absolute top-2 right-3 text-gray-500 animate-spin">
             ⏳
@@ -124,23 +143,20 @@ const CustomerSection = ({
         )}
       </div>
 
-      {/* 🔹 Show dropdown only if customer is NOT locked */}
       {!isLocked && showDropdown && (
-        <div ref={dropdownRef} className="absolute w-full bg-white shadow-lg p-2 rounded-md mt-1 border">
-          {/* ✅ Navigate to Add Customer page */}
+        <div
+          ref={dropdownRef}
+          className="absolute w-full bg-white shadow-lg p-2 rounded-md mt-1 border max-h-40 overflow-y-auto"
+        >
           <div
-  onClick={() => navigate("/add-customer?redirectTo=create-order")}
-  className="p-2 hover:bg-blue-100 cursor-pointer text-blue-600 font-medium"
->
-  ➕ Create a new customer
-</div>
+            onClick={() => navigate("/add-customer?redirectTo=create-order")}
+            className="p-2 hover:bg-blue-100 cursor-pointer text-blue-600 font-medium"
+          >
+            ➕ Create a new customer
+          </div>
 
-
-          {/* Show loading state */}
-          {loading ? (
-            <div className="p-2 text-gray-500">Loading...</div>
-          ) : customers.length > 0 ? (
-            customers.map((customer) => (
+          {filteredCustomers.length > 0 ? (
+            filteredCustomers.map((customer) => (
               <div
                 key={customer.id}
                 onClick={() => {

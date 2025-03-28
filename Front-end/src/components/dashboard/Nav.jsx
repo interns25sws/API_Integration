@@ -191,17 +191,6 @@ function Nav() {
          {/* 🔹 Modal for Adding API Credentials */}
       {showModal && <ConnectAppModal onClose={() => setShowModal(false)} onSave={handleSaveApp} />}
 
-{/* 🔹 List Connected Apps */}
-<div className="mt-4">
-        <h2 className="text-lg font-semibold">Connected Apps:</h2>
-        <ul className="mt-2">
-          {apps.map((app, index) => (
-            <li key={index} className="bg-gray-100 p-2 rounded mb-2">
-              {app.appName} (API Key: {app.apiKey})
-            </li>
-          ))}
-        </ul>
-      </div>
 
       </div>
     </nav>

@@ -1,7 +1,7 @@
 import express from "express";
 import axios from "axios";
 import { authMiddleware, authorize } from "../middleware/authMiddleware.js";
-
+import Discount from "../models/Discount.js"; // Import the schema
 
 const router = express.Router();
 
@@ -195,41 +195,97 @@ router.put("/update-order/:id", async (req, res) => {
   }
 });
 
-// Create a new order in Shopify
 router.post("/create-order", async (req, res) => {
   try {
     console.log("🔥 Incoming Order Request:", JSON.stringify(req.body, null, 2));
 
-    const { line_items, customer_id } = req.body;
-
+    const { line_items, customer, tags, total_price } = req.body;
+    const customer_id = customer?.id || null;
+    
     if (!Array.isArray(line_items) || line_items.length === 0) {
       console.error("❌ line_items is undefined or empty!");
       return res.status(400).json({ message: "No products selected" });
     }
 
+    // Convert line_items to Shopify format
+    const formattedLineItems = line_items.map((p) => ({
+      variant_id: parseInt(p.variant_id.replace("gid://shopify/ProductVariant/", ""), 10),
+      quantity: p.quantity,
+      price: parseFloat(p.price).toFixed(2),
+    }));
+
+    // Convert tags to Shopify's format
+    const formattedTags = Array.isArray(tags) ? tags.join(", ") : tags;
+
+    // 🏷️ Initialize Discount Variables
+    let bulkDiscountValue = 0;
+    let tagDiscountValue = 0;
+
+    // 🔎 Check for Bulk Discount
+    const totalQuantity = line_items.reduce((sum, item) => sum + item.quantity, 0);
+    const bulkDiscount = await Discount.findOne({ minQuantity: { $lte: totalQuantity } });
+
+    if (bulkDiscount) {
+      console.log(`✅ Bulk Discount Found: ${JSON.stringify(bulkDiscount, null, 2)}`);
+      bulkDiscountValue = parseFloat(bulkDiscount.discountValue);
+    }
+
+    // 🔎 Check for Tag Discount (Apply Even If Bulk Exists)
+    if (formattedTags) {
+      const tagDiscount = await Discount.findOne({ selectedTags: { $in: [formattedTags] } });
+
+      if (tagDiscount) {
+        console.log(`✅ Tag Discount Found: ${JSON.stringify(tagDiscount, null, 2)}`);
+        tagDiscountValue = parseFloat(tagDiscount.discountValue);
+      } else {
+        console.log("⚠️ No tag-based discount found.");
+      }
+    }
+
+    // ✅ Calculate Combined Discount Percentage
+    let combinedDiscountPercentage = 100 - ((100 - bulkDiscountValue) * (100 - tagDiscountValue) / 100);
+
+    // 💰 Apply Total Discount
+    let finalTotalPrice = total_price * ((100 - combinedDiscountPercentage) / 100);
+    if (finalTotalPrice < 0) finalTotalPrice = 0; // Prevent negative total
+
+    // ✅ Single Discount Code for Shopify
+    let discountCodes = [];
+    if (combinedDiscountPercentage > 0) {
+      discountCodes.push({
+        code: "BULK+TAG",
+        amount: combinedDiscountPercentage.toFixed(2),
+        type: "percentage",
+      });
+    }
+    console.log("🛍️ Incoming customer_id:", customer_id);
+
+    // 🛍️ Construct Shopify Order Payload
     const shopifyOrder = {
       order: {
-        line_items: line_items.map(p => ({
-          variant_id: parseInt(p.variant_id.replace("gid://shopify/ProductVariant/", ""), 10), // ✅ Convert to integer
-          quantity: p.quantity
-        })),
-        customer: customer_id 
-          ? { id: parseInt(customer_id.replace("gid://shopify/Customer/", ""), 10) } // ✅ Extract numeric ID
-          : undefined,
+        line_items: formattedLineItems,
         financial_status: "paid",
-        currency: "USD"
-      }
+        currency: "INR",
+        tags: formattedTags || null,
+        total_discounts: (total_price - finalTotalPrice).toFixed(2),
+        discount_codes: discountCodes,
+        customer: customer_id
+        ? { id: parseInt(customer_id.split("/").pop(), 10) } // Extract numeric ID
+        : null,
+            },
     };
+    
 
     console.log("🛍️ Sending Order Payload:", JSON.stringify(shopifyOrder, null, 2));
 
+    // 🛠️ Send Order to Shopify
     const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/orders.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
       },
-      body: JSON.stringify(shopifyOrder)
+      body: JSON.stringify(shopifyOrder),
     });
 
     const data = await response.json();
@@ -240,12 +296,12 @@ router.post("/create-order", async (req, res) => {
     }
 
     res.json({ message: "Order created successfully", order: data.order });
-
   } catch (error) {
     console.error("❌ Error creating order:", error.message);
     res.status(500).json({ message: error.message });
   }
 });
+
 router.delete("/:id", async (req, res) => {
   try {
     const orderId = req.params.id;

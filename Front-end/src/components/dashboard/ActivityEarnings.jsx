@@ -24,64 +24,65 @@ const ActivityEarnings = () => {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const response = await axios.get("http://localhost:5000/api/analytics", {
+        const response = await axios.get("http://localhost:5000/api/shopify/analytics", {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         });
-  
-        console.log("Full API Response:", response.data); // Log full response
-  
+    
+        console.log("🔎 Full API Response:", response.data); // Log full API response
+    
         const data = response.data.analytics;
-        if (!data || !data.activity || !data.earnings) {
-          console.error("Missing analytics data from API", data);
+        if (!data) {
+          console.error("❌ Error: 'analytics' field is missing in API response:", response.data);
           setLoading(false);
           return;
         }
-  
+    
         setTotalOrders(data.totalOrders || 0);
         setTotalRevenue(data.totalRevenue || 0);
-  
+    
         setActivityData({
-          labels: data.activity.labels || [],
+          labels: data.activity?.labels || [],
           datasets: [
             {
               label: "Hours Spent",
-              data: data.activity.hoursSpent || [],
+              data: data.activity?.hoursSpent || [],
               backgroundColor: "rgba(153, 102, 255, 0.6)",
               borderColor: "rgba(153, 102, 255, 1)",
               borderWidth: 1,
             },
           ],
         });
-  
+    
         setEarningsData({
-          labels: data.earnings.labels || [],
+          labels: data.earnings?.labels || [],
           datasets: [
             {
               label: "Revenue ($)",
-              data: data.earnings.revenue || [],
+              data: data.earnings?.revenue || [],
               backgroundColor: "rgba(54, 162, 235, 0.6)",
               borderColor: "rgba(54, 162, 235, 1)",
               borderWidth: 1,
             },
             {
               label: "Profit ($)",
-              data: data.earnings.profit || [],
+              data: data.earnings?.profit || [],
               backgroundColor: "rgba(75, 192, 192, 0.6)",
               borderColor: "rgba(75, 192, 192, 1)",
               borderWidth: 1,
             },
           ],
         });
-  
+    
         setLoading(false);
       } catch (error) {
-        console.error("Error fetching analytics data:", error);
+        console.error("❌ Error fetching analytics data:", error);
         setLoading(false);
       }
     };
-  
+    
     fetchAnalytics();
   }, []);
+  
   
 
   const options = {

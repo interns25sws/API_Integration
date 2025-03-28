@@ -16,7 +16,11 @@ const TagSection = ({ tags, setTags, applyTagDiscount }) => {
 
   const handleRemoveTag = (tag) => {
     setTags(tags.filter(t => t !== tag));
+  
+    // ❌ Remove discount when tag is removed
+    applyTagDiscount(tag, true); // Pass `true` to indicate removal
   };
+  
 
   return (
     <div className="bg-white p-4 rounded-lg shadow">

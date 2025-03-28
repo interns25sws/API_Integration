@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import axios from "axios";
 import Shopify from "shopify-api-node";
 import { authMiddleware } from "../middleware/authMiddleware.js";  // Ensure user is authenticated
-import Shop from "../models/Shop.js";  // Assuming this is your model to store shop data
 
 dotenv.config();
 
@@ -42,132 +41,137 @@ router.get("/check-connection", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-// 🟢 Fetch Analytics Data from Shopify
-router.get("/analytics", authMiddleware, async (req, res) => {
+router.get("/top-products", async (req, res) => {
   try {
-    const userId = req.user._id;
-    const shopData = await Shop.findOne({ userId });
+  
 
-    if (!shopData || !shopData.accessToken) {
-      return res.status(400).json({ success: false, message: "Shopify store not connected" });
-    }
+    const query = `
+      {
+        products(first: 5) {
+          edges {
+            node {
+              id
+              title
+              totalInventory
+              featuredImage {
+                url
+              }
+              variants(first: 1) {
+                edges {
+                  node {
+                    price
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
 
-    const shopify = new Shopify({
-      shopName: shopData.shop,
-      accessToken: shopData.accessToken,
+    const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ query }),
     });
 
-    // 🛒 Fetch All Orders
-    const orders = await shopify.order.list();
-    
-    // 🏆 Calculate Total Revenue
-    const totalRevenue = orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0);
-    
-    // 🛍️ Calculate Total Orders Count
-    const orderCount = orders.length;
+    const data = await response.json();
+    const products = data.data.products.edges.map((edge) => edge.node);
 
-    // 📈 Example: Get Total Products Count
-    const products = await shopify.product.list();
-    const totalProducts = products.length;
+    res.json({ products });
+  } catch (error) {
+    console.error("❌ Error fetching products from Shopify:", error);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
+});
+router.get("/analytics", async (req, res) => {
 
-    // ⏳ Get Sales in Last 7 Days (Example)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  try {
+    const query = `
+     {
+  orders(first: 100, sortKey: CREATED_AT, reverse: true) {
+    edges {
+      node {
+        id
+        createdAt
+        totalPriceSet {
+          shopMoney {
+            amount
+          }
+        }
+      }
+    }
+  }
+}
 
-    const recentOrders = orders.filter(order => new Date(order.created_at) >= sevenDaysAgo);
-    const revenueLast7Days = recentOrders.reduce((sum, order) => sum + parseFloat(order.total_price), 0);
+    `;
+
+    const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    const data = await response.json();
+    console.log("🔍 Shopify API Response:", JSON.stringify(data, null, 2)); // Debugging log
+
+    if (!data.data || !data.data.orders) {
+      return res.status(500).json({ error: "Failed to fetch analytics", details: data });
+    }
+
+    const orders = data.data.orders.edges.map((edge) => edge.node);
+    console.log("Total Orders Fetched from Shopify:", orders.length);
+
+    // Get current date and time
+    const now = new Date();
+    // Calculate the date 7 days ago
+    const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Filter orders created in the last 7 days
+    const recentOrders = orders.filter((order) => {
+      const orderDate = new Date(order.createdAt);
+      return orderDate >= last7Days;
+    });
+
+    // Calculate total revenue and orders for the last 7 days
+    const totalRevenue = recentOrders.reduce((sum, order) => sum + parseFloat(order.totalPriceSet.shopMoney.amount), 0);
+    const totalOrders = recentOrders.length;
+
+    const activity = {};
+    recentOrders.forEach((order) => {
+      const date = order.createdAt.split("T")[0];
+      activity[date] = (activity[date] || 0) + 1;
+    });
+
+    const activityLabels = Object.keys(activity);
+    const activityValues = Object.values(activity);
 
     res.json({
-      totalRevenue,
-      orderCount,
-      totalProducts,
-      revenueLast7Days,
+      analytics: {
+        totalOrders,
+        totalRevenue,
+        activity: {
+          labels: activityLabels,
+          hoursSpent: activityValues,
+        },
+        earnings: {
+          labels: ["Total Revenue"],
+          revenue: [totalRevenue],
+          profit: [totalRevenue * 0.8],
+        },
+      },
     });
-
   } catch (error) {
-    console.error("❌ Error fetching analytics:", error.message);
-    res.status(500).json({ error: "Failed to fetch analytics." });
+    console.error("❌ Error fetching analytics from Shopify:", error);
+    res.status(500).json({ error: "Failed to fetch analytics" });
   }
 });
-
-// Fetch all products
-router.get("/products", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const shopData = await Shop.findOne({ userId });
-
-    if (!shopData || !shopData.accessToken) {
-      // Fallback to access token from .env if not in the database
-      if (!process.env.SHOPIFY_ACCESS_TOKEN) {
-        return res.status(400).json({ success: false, message: "Shopify store not connected and no access token in .env" });
-      }
-      // Use the access token from .env if not in DB
-      const shopify = new Shopify({
-        shopName: process.env.SHOPIFY_STORE_NAME, // Directly from .env
-        accessToken: process.env.SHOPIFY_ACCESS_TOKEN, // From .env
-      });
-
-      const products = await shopify.product.list();
-      return res.json(products);
-    }
-
-    const shopify = new Shopify({
-      shopName: shopData.shop,
-      accessToken: shopData.accessToken,
-    });
-
-    const products = await shopify.product.list();
-
-    // Check if any products were found
-    if (products.length === 0) {
-      console.log("🔍 No products found for user:", userId);
-      return res.status(404).json({ success: false, message: "No products found" });
-    }
-
-    console.log("✅ Products fetched successfully for user:", userId);
-    res.json(products);
-  } catch (error) {
-    console.error("❌ Error fetching products:", error.message);
-    res.status(500).json({ error: "Failed to fetch products." });
-  }
-});
-
-// Fetch all orders
-router.get("/orders", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const shopData = await Shop.findOne({ userId });
-
-    if (!shopData || !shopData.accessToken) {
-      // Fallback to access token from .env if not in the database
-      if (!process.env.SHOPIFY_ACCESS_TOKEN) {
-        return res.status(400).json({ success: false, message: "Shopify store not connected and no access token in .env" });
-      }
-
-      // Use the access token from .env if not in DB
-      const shopify = new Shopify({
-        shopName: process.env.SHOPIFY_STORE_NAME, // Directly from .env
-        accessToken: process.env.SHOPIFY_ACCESS_TOKEN, // From .env
-      });
-
-      const orders = await shopify.order.list();
-      return res.json(orders);
-    }
-
-    const shopify = new Shopify({
-      shopName: shopData.shop,
-      accessToken: shopData.accessToken,
-    });
-
-    const orders = await shopify.order.list();
-    res.json(orders);
-  } catch (error) {
-    console.error("❌ Error fetching orders:", error.message);
-    res.status(500).json({ error: "Failed to fetch orders." });
-  }
-});
-
-
 
 router.post("/graphql", async (req, res) => {
   console.log("🔥 Incoming Shopify GraphQL request:", req.body);
@@ -193,54 +197,6 @@ router.post("/graphql", async (req, res) => {
     });
   }
 });
-
-
-
-// Fetch a single product by ID
-router.get("/products/:id", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const shopData = await Shop.findOne({ userId });
-
-    if (!shopData || !shopData.accessToken) {
-      return res.status(400).json({ success: false, message: "Shopify store not connected" });
-    }
-
-    const shopify = new Shopify({
-      shopName: shopData.shop,
-      accessToken: shopData.accessToken,
-    });
-
-    const product = await shopify.product.get(req.params.id);
-    res.json(product);
-  } catch (error) {
-    console.error("❌ Error fetching product:", error.message);
-    res.status(500).json({ error: "Failed to fetch product." });
-  }
-});
-
-// Fetch a single order by ID
-router.get("/orders/:id", authMiddleware, async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const shopData = await Shop.findOne({ userId });
-
-    if (!shopData || !shopData.accessToken) {
-      return res.status(400).json({ success: false, message: "Shopify store not connected" });
-    }
-
-    const shopify = new Shopify({
-      shopName: shopData.shop,
-      accessToken: shopData.accessToken,
-    });
-
-    const order = await shopify.order.get(req.params.id);
-    res.json(order);
-  } catch (error) {
-    console.error("❌ Error fetching order:", error.message);
-    res.status(500).json({ error: "Failed to fetch order." });
-  }
-});
-
 export default router;
+
 
