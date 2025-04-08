@@ -44,6 +44,7 @@ export default function CreateDiscount() {
         setLoadingTags(false);
       });
   }, []);
+  
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;

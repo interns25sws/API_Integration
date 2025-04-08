@@ -174,6 +174,42 @@ router.get("/analytics", async (req, res) => {
   }
 });
 
+router.post("/orders", async (req, res) => {
+  const query = `
+    {
+      orders(first: 250) {
+        edges {
+          node {
+            id
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const response = await axios.post(
+      process.env.SHOPIFY_GRAPHQL_URL,
+      { query },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+        },
+      }
+    );
+
+    const totalOrders = response.data.data.orders.edges.length;
+    console.log("Total Orders Fetched from Shopify:", totalOrders);
+
+    res.json({ totalOrders });
+  } catch (err) {
+    console.error("Error fetching Shopify orders:", err?.response?.data || err);
+    res.status(500).json({ error: "Failed to fetch orders" });
+  }
+});
+
+
 router.post("/graphql", async (req, res) => {
   console.log("🔥 Incoming Shopify GraphQL request:", req.body);
 
