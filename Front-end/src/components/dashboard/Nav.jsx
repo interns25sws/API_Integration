@@ -110,17 +110,7 @@ function Nav() {
                     >
                     Customers
         </NavLink>
-        <NavLink
-            to="/users"
-            className={({ isActive }) =>
-             [
-             "font-medium px-3 py-1 rounded-lg transition",
-               isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-             ].join(" ")
-                 }      
-        > 
-           {(user?.role === "super-admin" || user?.role === "admin") && "Users"}
-        </NavLink>
+       
         <NavLink
            to="/create-discounts"
            className={({ isActive }) =>
@@ -131,6 +121,17 @@ function Nav() {
                     }
                     >
                     Discounts
+        </NavLink>
+        <NavLink
+            to="/users"
+            className={({ isActive }) =>
+             [
+             "font-medium px-3 py-1 rounded-lg transition",
+               isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
+             ].join(" ")
+                 }      
+        > 
+           {(user?.role === "super-admin" || user?.role === "admin") && "Users"}
         </NavLink>
         <button
         onClick={() => setShowModal(true)}

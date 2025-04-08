@@ -1,46 +1,56 @@
 import express from "express";
 import Discount from "../models/Discount.js"; // Ensure correct path
 import axios from "axios";
+import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
 // ✅ Fetch all discounts
-router.get("/discounts", async (req, res) => {
+router.get("/get-all", authMiddleware, async (req, res) => {
   try {
-    const discounts = await Discount.find();
-    res.json(discounts);
+    const userId = req.user._id; // `req.user` is available from your authMiddleware
+
+    const discounts = await Discount.find({ userId }); // only fetch for logged-in user
+
+    res.status(200).json(discounts);
   } catch (error) {
-    res.status(500).json({ error: "Server Error" });
+    console.error("❌ Error fetching discounts:", error.message);
+    res.status(500).json({ message: "Server error while fetching discounts" });
   }
 });
 
-router.post("/save-discount", async (req, res) => {
+router.post("/save-discount", authMiddleware, async (req, res) => {
   try {
     console.log("📌 Received Data:", req.body);
 
     let { type, discountType, discountValue, selectedTags = [], minQuantity, applyTo } = req.body;
 
+    // Check for required fields
     if (!type || !discountType || discountValue === undefined) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // ✅ Convert to numbers explicitly
+    // Convert values to the correct type explicitly
     discountValue = Number(discountValue);
-    minQuantity = Number(minQuantity);
-
-    // ✅ Ensure `applyTo` is explicitly set for Bulk Discount
-    if (type === "Bulk Discount") {
-      applyTo = "bulk"; // 🔥 Explicitly set `applyTo` for bulk discounts
+    if (isNaN(discountValue)) {
+      return res.status(400).json({ error: "Invalid discount value" });
     }
 
-    if (applyTo === "bulk" && (!minQuantity || minQuantity < 2)) {
-      return res.status(400).json({ error: "Bulk discount requires a minimum quantity of at least 2." });
+    minQuantity = Number(minQuantity);
+
+    if (type === "Bulk Discount") {
+      applyTo = "bulk";
+      if (!minQuantity || minQuantity < 2) {
+        return res.status(400).json({ error: "Bulk discount requires a minimum quantity of at least 2." });
+      }
+    } else {
+      minQuantity = undefined;
     }
 
     console.log("🔥 Processed Discount Data:", { type, discountType, discountValue, selectedTags, applyTo, minQuantity });
 
-    // ✅ Save discount in MongoDB
-    const newDiscount = new Discount({ type, discountType, discountValue, selectedTags, applyTo, minQuantity });
+    // Save the discount in MongoDB
+    const newDiscount = new Discount({ type, discountType, discountValue, selectedTags, applyTo, minQuantity,  userId: req.user._id, });
     await newDiscount.save();
 
     res.json({ message: "Discount saved successfully!", discount: newDiscount });

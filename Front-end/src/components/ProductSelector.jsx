@@ -19,7 +19,7 @@ const ProductSelector = ({ onSelect, buttonType }) => {
     try {
       const response = await axios.post(API_URL, {
         query: `{
-          products(first: 20) {
+          products(first: 100) {
             edges {
               node {
                 id
