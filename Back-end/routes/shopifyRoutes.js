@@ -7,6 +7,7 @@ import { authMiddleware } from "../middleware/authMiddleware.js";  // Ensure use
 dotenv.config();
 
 const router = express.Router();
+const SHOPIFY_GRAPHQL_URL = process.env.SHOPIFY_GRAPHQL_URL;
 
 // Shopify connection check endpoint
 router.get("/check-connection", authMiddleware, async (req, res) => {
@@ -69,7 +70,7 @@ router.get("/top-products", async (req, res) => {
       }
     `;
 
-    const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/graphql.json`, {
+    const response = await fetch(SHOPIFY_GRAPHQL_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -109,7 +110,7 @@ router.get("/analytics", async (req, res) => {
 
     `;
 
-    const response = await fetch(`https://bullvvark.myshopify.com/admin/api/2024-01/graphql.json`, {
+    const response = await fetch(SHOPIFY_GRAPHQL_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -45,6 +45,7 @@ const Login = () => {
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("role", user.role);
+      localStorage.setItem("tags", JSON.stringify(user.tags));
   
       if (rememberMe) {
         localStorage.setItem("rememberedEmail", data.email);

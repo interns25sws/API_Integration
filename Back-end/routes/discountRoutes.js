@@ -8,9 +8,18 @@ const router = express.Router();
 // ✅ Fetch all discounts
 router.get("/get-all", authMiddleware, async (req, res) => {
   try {
-    const userId = req.user._id; // `req.user` is available from your authMiddleware
+    const userId = req.user._id;
+    const userRole = req.user.role;
 
-    const discounts = await Discount.find({ userId }); // only fetch for logged-in user
+    let discounts;
+
+    if (userRole === "Super Admin") {
+      // ✅ Super Admin sees all discounts
+      discounts = await Discount.find().populate("userId", "name email");
+    } else {
+      // ✅ Other users see only their own
+      discounts = await Discount.find({ userId });
+    }
 
     res.status(200).json(discounts);
   } catch (error) {
@@ -19,11 +28,19 @@ router.get("/get-all", authMiddleware, async (req, res) => {
   }
 });
 
+
 router.post("/save-discount", authMiddleware, async (req, res) => {
   try {
     console.log("📌 Received Data:", req.body);
 
-    let { type, discountType, discountValue, selectedTags = [], minQuantity, applyTo } = req.body;
+    let {
+      type,
+      discountType,
+      discountValue,
+      selectedTags = [],
+      minQuantity,
+      applyTo
+    } = req.body;
 
     // Check for required fields
     if (!type || !discountType || discountValue === undefined) {
@@ -41,16 +58,49 @@ router.post("/save-discount", authMiddleware, async (req, res) => {
     if (type === "Bulk Discount") {
       applyTo = "bulk";
       if (!minQuantity || minQuantity < 2) {
-        return res.status(400).json({ error: "Bulk discount requires a minimum quantity of at least 2." });
+        return res.status(400).json({
+          error: "Bulk discount requires a minimum quantity of at least 2."
+        });
       }
     } else {
       minQuantity = undefined;
     }
 
-    console.log("🔥 Processed Discount Data:", { type, discountType, discountValue, selectedTags, applyTo, minQuantity });
+    // ✅ Check for existing Tag-Based Discount with same tags
+    if (type === "Tag-Based Discount" && selectedTags.length > 0) {
+      const existing = await Discount.findOne({
+        userId: req.user._id,
+        type: "Tag-Based Discount",
+        selectedTags: { $in: selectedTags }
+      });
+
+      if (existing) {
+        return res.status(400).json({
+          error: `A discount already exists for one of the selected tags (${existing.selectedTags.join(", ")})`
+        });
+      }
+    }
+
+    console.log("🔥 Processed Discount Data:", {
+      type,
+      discountType,
+      discountValue,
+      selectedTags,
+      applyTo,
+      minQuantity
+    });
 
     // Save the discount in MongoDB
-    const newDiscount = new Discount({ type, discountType, discountValue, selectedTags, applyTo, minQuantity,  userId: req.user._id, });
+    const newDiscount = new Discount({
+      type,
+      discountType,
+      discountValue,
+      selectedTags,
+      applyTo,
+      minQuantity,
+      userId: req.user._id
+    });
+
     await newDiscount.save();
 
     res.json({ message: "Discount saved successfully!", discount: newDiscount });
@@ -116,6 +166,16 @@ router.get("/discounts-by-quantity", async (req, res) => {
   } catch (error) {
     console.error("❌ Error fetching bulk discount:", error.message);
     res.status(500).json({ message: "Internal server error" });
+  }
+});
+router.delete("/:id", authMiddleware, async (req, res) => {
+  try {
+    const deleted = await Discount.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Discount not found" });
+    res.json({ message: "Discount deleted successfully" });
+  } catch (err) {
+    console.error("❌ Error deleting discount:", err.message);
+    res.status(500).json({ message: "Failed to delete discount" });
   }
 });
 

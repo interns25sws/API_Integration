@@ -112,18 +112,19 @@ export default function CreateDiscount() {
 
       console.log("✅ Server Response:", result);
 
-      // ✅ Safely update saved discounts
       setSavedDiscounts((prev) => [
         ...(prev || []),
         {
-          id: Date.now(),
-          type: selectedType,
-          discountType: discountType,
-          discountValue: data.discountValue,
-          tags: selectedType === "Tag-Based Discount" ? selectedTags : undefined,
-          minQuantity: selectedType === "Bulk Discount" ? minQuantity : undefined,
+          _id: result.discount._id,
+          type: result.discount.type,
+          discountType: result.discount.discountType,
+          discountValue: result.discount.discountValue,
+          selectedTags: result.discount.selectedTags,
+          minQuantity: result.discount.minQuantity,
         },
       ]);
+      
+      
     } catch (error) {
       console.error("❌ Fetch error:", error);
       alert("Something went wrong. Please try again.");
@@ -134,7 +135,29 @@ export default function CreateDiscount() {
     const selectedTags = selectedOptions.map((option) => option.value);
     setValue("selectedTags", selectedTags);
   };
-
+  const handleDeleteDiscount = async (discountId) => {
+    const token = localStorage.getItem("token");
+  
+    if (!window.confirm("Are you sure you want to delete this discount?")) return;
+  
+    try {
+      const res = await fetch(`http://localhost:5000/api/discounts/${discountId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+  
+      if (!res.ok) throw new Error("Failed to delete discount");
+  
+      // Refresh the list after deletion
+      setSavedDiscounts((prev) => prev.filter((d) => d._id !== discountId));
+    } catch (err) {
+      console.error("❌ Error deleting discount:", err);
+      alert("Failed to delete discount");
+    }
+  };
+  
   return (
     <div className="p-6 max-w-lg mx-auto">
       <h1 className="text-xl font-bold mb-4">Create Discount</h1>
@@ -245,22 +268,32 @@ export default function CreateDiscount() {
               </tr>
             </thead>
             <tbody>
-              {savedDiscounts.map((discount) => (
-                <tr key={discount.id} className="border">
-                  <td className="border p-2">{discount.type}</td>
-                  <td className="border p-2">
-                    {discount.tags?.join(", ") || "N/A"}
-                  </td>
-                  <td className="border p-2">{discount.minQuantity || "-"}</td>
-                  <td className="border p-2">{discount.discountType}</td>
-                  <td className="border p-2">
-                    {discount.discountType === "percentage"
-                      ? `${discount.discountValue}%`
-                      : `$${discount.discountValue}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+  {savedDiscounts.map((discount) => (
+    <tr key={discount._id} className="border">
+      <td className="border p-2">{discount.type}</td>
+      <td className="border p-2">
+  {discount.selectedTags?.length ? discount.selectedTags.join(", ") : "N/A"}
+</td>
+
+      <td className="border p-2">{discount.minQuantity || "-"}</td>
+      <td className="border p-2">{discount.discountType}</td>
+      <td className="border p-2">
+        {discount.discountType === "percentage"
+          ? `${discount.discountValue}%`
+          : `$${discount.discountValue}`}
+      </td>
+      <td className="border p-2">
+        <button
+          className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+          onClick={() => handleDeleteDiscount(discount._id)}
+        >
+          Delete
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
+
           </table>
         </div>
       )}
