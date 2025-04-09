@@ -19,6 +19,7 @@ const CreateOrder = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedTag, setSelectedTag] = useState([]);
   const [notes, setNotes] = useState("");
   const [tags, setTags] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState("India (INR ₹)");
@@ -34,6 +35,11 @@ const CreateOrder = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [isLocked, setIsLocked] = useState(false); // ✅ Ensure isLocked is defined
   const [bulkDiscount, setBulkDiscount] = useState(0);
+  const [orderTags, setOrderTags] = useState([]);
+  const [discountTagList, setDiscountTagList] = useState([]);
+  const [appliedDiscountTag, setAppliedDiscountTag] = useState(null);
+
+
 
 
   useEffect(() => {
@@ -45,6 +51,20 @@ const CreateOrder = () => {
   // useEffect(() => {
   //   fetchOrders();
   // }, []);
+  useEffect(() => {
+    const fetchDiscountTags = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/discounts/tag-list");
+        const data = await res.json();
+        setDiscountTagList(data);
+      } catch (err) {
+        console.error("❌ Error fetching tag list:", err);
+      }
+    };
+  
+    fetchDiscountTags();
+  }, []);
+  
   useEffect(() => {
     const totalQuantity = selectedProducts.reduce((sum, product) => sum + (product.quantity || 1), 0);
   
@@ -80,7 +100,23 @@ const CreateOrder = () => {
   setSubtotal(sum);
 }, [selectedProducts]);
 
-// Apply discount and calculate total
+
+useEffect(() => {
+  // Recalculate the discount based on selected tags
+  let newDiscount = 0;
+
+  if (selectedTag.length > 0) {
+    selectedTag.forEach(tag => {
+      if (tag === 'abc') newDiscount += 0.20 * subtotal;  // 20% off for 'abc'
+      if (tag === 'sf') newDiscount += 0.12 * subtotal;   // 12% off for 'sf'
+    });
+  }
+
+  // Update the discount state when tags change
+  setDiscount(newDiscount);
+}, [selectedTag, subtotal]); // Re-run when selectedTag or subtotal changes
+
+// Apply discount and calculate total in another useEffect
 useEffect(() => {
   if (!subtotal) {
     setTotal(0);
@@ -104,12 +140,8 @@ useEffect(() => {
   // Prevent negative values
   totalAmount = Math.max(0, totalAmount);
 
-  // // Recalculate tax (9% on the new total)
-  // const taxRate = 0.09;
-  // const newTax = totalAmount * taxRate;
-
-  // setTax(newTax);
-  setTotal(totalAmount  + shipping);
+  // Add shipping cost and set total
+  setTotal(totalAmount + shipping);
 }, [subtotal, discount, bulkDiscount, shipping]);
 
   const fetchProducts = async () => {
@@ -129,26 +161,6 @@ useEffect(() => {
     setLoading(false);
   };
 
-  // const fetchOrders = async () => {
-  //   try {
-  //     const response = await fetch("http://localhost:5000/api/orders/fetch-orders-direct", {
-  //       method: "GET",
-  //       headers: {
-  //         "Authorization": `Bearer ${localStorage.getItem("token")}`, // Ensure the token is stored in localStorage
-  //         "Content-Type": "application/json",
-  //       },
-  //     });
-
-  //     if (!response.ok) {
-  //       throw new Error(`HTTP error! Status: ${response.status}`);
-  //     }
-
-  //     const data = await response.json();
-  //     console.log("✅ Orders fetched:", data);
-  //   } catch (error) {
-  //     console.error("❌ Error fetching orders:", error.message);
-  //   }
-  // };
 
   const handleProductSelect = (newProducts) => {
     setSelectedProducts((prevProducts) => {
@@ -183,39 +195,49 @@ useEffect(() => {
   };
 
  
-  const applyTagDiscount = async (tag, isRemoving = false) => {
-    if (isRemoving) {
-      setDiscount(0); // ❌ Remove discount when tag is removed
-      console.log(`🗑️ Tag "${tag}" removed. Discount reset.`);
-      return;
-    }
+  useEffect(() => {
+    const applyMultipleDiscounts = async () => {
+      let totalPercent = 0;
   
-    try {
-      const url = `http://localhost:5000/api/discounts/discounts-by-tag?tag=${tag}`;
-      console.log("🔎 Fetching discount from:", url);
+      for (const tag of selectedTag) {
+        if (!discountTagList.includes(tag)) {
+          console.log(`🚫 Tag "${tag}" is not a valid discount tag. Skipping.`);
+          continue;
+        }
   
-      const response = await fetch(url);
-      const text = await response.text();
-      console.log("📝 Raw API Response:", text);
+        try {
+          const response = await fetch(`http://localhost:5000/api/discounts/discounts-by-tag?tag=${tag}`);
+          const text = await response.text();
+          const data = JSON.parse(text);
   
-      const data = JSON.parse(text);
-      console.log("✅ Parsed Discount Data:", data);
-  
-      if (data && data.discountPercent !== undefined) {
-        const discountPercentage = Number(data.discountPercent);
-        const calculatedDiscount = (subtotal * discountPercentage) / 100;
-  
-        setDiscount(calculatedDiscount);
-        console.log(`✅ Discount Applied: ₹${calculatedDiscount} (${discountPercentage}%)`);
-      } else {
-        console.warn("⚠️ No discount found for this tag");
-        setDiscount(0);
+          if (data && data.discountPercent !== undefined) {
+            const percent = Number(data.discountPercent);
+            totalPercent += percent;
+            console.log(`✅ Tag "${tag}" contributes ${percent}%`);
+          }
+        } catch (err) {
+          console.warn(`❌ Failed to fetch discount for tag "${tag}"`);
+        }
       }
-    } catch (error) {
-      console.error("❌ Error fetching discount:", error);
-      setDiscount(0);
+  
+      if (totalPercent > 0) {
+        const calculatedDiscount = (subtotal * totalPercent) / 100;
+        setDiscount(calculatedDiscount);
+        setAppliedDiscountTag(selectedTag.join(", "));
+        console.log(`✅ Total discount from [${selectedTag}]: ₹${calculatedDiscount} (${totalPercent}%)`);
+      } else {
+        setDiscount(0);
+        setAppliedDiscountTag(null);
+        console.log("⚠️ No valid discounts found in selected tags.");
+      }
+    };
+  
+    if (Array.isArray(selectedTag) && selectedTag.length > 0 && subtotal > 0) {
+      applyMultipleDiscounts();
     }
-  };
+  }, [selectedTag, subtotal]);
+  
+  
   useEffect(() => {
     console.log("🔎 Extracted customerId from URL:", customerId);
     if (customerId && customerId !== "search") {
@@ -253,9 +275,33 @@ useEffect(() => {
     console.log("✅ Customer Selected:", customer);
     setSearchTerm(`${customer.firstName} ${customer.lastName}`);
     setShowDropdown(false);
-    setSelectedCustomer(customer); // Make sure selectedCustomer is updated
-  };
+    setSelectedCustomer(customer);
   
+    let customerTags = [];
+    if (Array.isArray(customer.tags)) {
+      customerTags = customer.tags.map(tag => tag.trim());
+    } else if (typeof customer.tags === "string") {
+      customerTags = customer.tags.split(',').map(tag => tag.trim());
+    }
+  
+    console.log("✅ Parsed Customer Tags:", customerTags);
+    console.log("🎯 Discount Tag List from DB:", discountTagList);
+  
+    // ✅ Filter tags that are in the discount list
+    const validTags = customerTags.filter(tag => discountTagList.includes(tag));
+    console.log("✅ Valid Discount Tags:", validTags);
+  
+    // ✅ Set visible tags in Tag Section
+    setTags(validTags);
+  
+    // ✅ Pass all matching discount tags for discount calculation
+    if (validTags.length > 0) {
+      setSelectedTag(validTags); // pass array of all valid tags
+    } else {
+      setSelectedTag([]);        // clear tag selection
+      setDiscount(0);
+    }
+  };
   
   const handleCreateOrder = async () => {
     // Ensure products are selected before proceeding
@@ -327,6 +373,13 @@ useEffect(() => {
       setLoading(false);
     }
   };
+  useEffect(() => {
+    console.log("🧠 STATE DEBUG:");
+    console.log("🟡 selectedTag:", selectedTag);
+    console.log("🟡 subtotal:", subtotal);
+    console.log("🟡 discount:", discount);
+    console.log("🟡 total:", total);
+  }, [selectedTag, subtotal, discount, total]);
   
   return (
     <div className="m-5 p-6 bg-gray-100 min-h-screen">
@@ -400,8 +453,12 @@ useEffect(() => {
           </div>
 
           {/* Tags Section */}
-          <TagSection tags={tags} setTags={setTags} applyTagDiscount={applyTagDiscount} />
-        </div>
+          <TagSection
+  tags={tags}
+  setTags={setTags}
+  setSelectedTag={setSelectedTag}
+/>
+          </div>
       </div>
        {/* Custom Item Modal */}
        {isCustomItemModalOpen && (

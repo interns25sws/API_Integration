@@ -110,6 +110,16 @@ router.post("/save-discount", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+// ✅ Get all distinct discount tags
+router.get("/tag-list", async (req, res) => {
+  try {
+    const tags = await Discount.find().distinct("selectedTags");
+    res.json(tags);
+  } catch (error) {
+    console.error("❌ Error fetching tag list:", error);
+    res.status(500).json({ error: "Error fetching tag list" });
+  }
+});
 
 // ✅ Fetch discount by tag (Only for Tag-Based Discounts)
 router.get("/discounts-by-tag", async (req, res) => {

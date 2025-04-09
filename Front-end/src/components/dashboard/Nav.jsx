@@ -57,144 +57,125 @@ function Nav() {
   };
 
   return (
-    <nav className="w-[95%] mx-auto mt-4 bg-white shadow-md rounded-2xl px-6 py-4 flex items-center justify-between">
-      {/* Left Section: Logo */}
-      <div className="flex items-center gap-2">
-        <img src="https://res.cloudinary.com/perfume/image/upload/v1741592046/star_cyprif.png" alt="Shopify Logo" className="w-15 h-15" />
-        <span className="text-lg font-semibold">Shopify</span>
-      </div>
+    <nav className="w-[95%] mx-auto mt-4 bg-white shadow-md rounded-2xl px-6 py-4 flex flex-wrap items-center justify-between">
+  {/* Left Section: Logo */}
+  <div className="flex items-center gap-3">
+    <img
+      src="https://res.cloudinary.com/perfume/image/upload/v1741592046/star_cyprif.png"
+      alt="Shopify Logo"
+      className="w-20 h-20 object-contain"
+    />
+  </div>
 
-      {/* Middle Section: Nav Links */}
-      <div className="flex gap-8 bg-gray-100 px-4 py-2 rounded-xl">
+  {/* Middle Section: Navigation Links */}
+  <div className="flex flex-wrap items-center gap-4 bg-gray-100 px-4 py-2 rounded-xl">
+    {[
+      { to: "/dashboard", label: "Dashboard" },
+      { to: "/products", label: "Products" },
+      { to: "/orders", label: "Orders" },
+      { to: "/customers", label: "Customers" },
+      { to: "/create-discounts", label: "Discounts" },
+    ].map(({ to, label }) => (
       <NavLink
-           to="/dashboard"
-           className={({ isActive }) =>
-                  [
-                   "font-medium px-3 py-1 rounded-lg transition",
-                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-                  ].join(" ")
-                    }
-                    >
-                    Dashboard
-        </NavLink>
-        <NavLink
-           to="/products"
-           className={({ isActive }) =>
-                  [
-                   "font-medium px-3 py-1 rounded-lg transition",
-                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-                  ].join(" ")
-                    }
-                    >
-                    Products
-        </NavLink>
-        <NavLink
-           to="/orders"
-           className={({ isActive }) =>
-                  [
-                   "font-medium px-3 py-1 rounded-lg transition",
-                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-                  ].join(" ")
-                    }
-                    >
-                    Orders
-        </NavLink>
-        <NavLink
-           to="/customers"
-           className={({ isActive }) =>
-                  [
-                   "font-medium px-3 py-1 rounded-lg transition",
-                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-                  ].join(" ")
-                    }
-                    >
-                    Customers
-        </NavLink>
-       
-        <NavLink
-           to="/create-discounts"
-           className={({ isActive }) =>
-                  [
-                   "font-medium px-3 py-1 rounded-lg transition",
-                    isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-                  ].join(" ")
-                    }
-                    >
-                    Discounts
-        </NavLink>
-        <NavLink
-            to="/users"
-            className={({ isActive }) =>
-             [
-             "font-medium px-3 py-1 rounded-lg transition",
-               isActive ? "text-black font-bold" : "text-gray-600 hover:text-black",
-             ].join(" ")
-                 }      
-        > 
-           {(user?.role === "super-admin" || user?.role === "admin") && "Users"}
-        </NavLink>
-        <button
-        onClick={() => setShowModal(true)}
-        className="bg-green-500 text-white px-4 py-2 rounded mt-4"
+        key={label}
+        to={to}
+        className={({ isActive }) =>
+          [
+            "text-sm font-medium px-3 py-2 rounded-md transition",
+            isActive
+              ? "bg-white text-black font-semibold shadow-sm"
+              : "text-gray-600 hover:text-black",
+          ].join(" ")
+        }
       >
-        + Connect New App
-      </button>
+        {label}
+      </NavLink>
+    ))}
 
+    {/* Show Users link only for certain roles */}
+    {(user?.role === "super-admin" || user?.role === "admin") && (
+      <NavLink
+        to="/users"
+        className={({ isActive }) =>
+          [
+            "text-sm font-medium px-3 py-2 rounded-md transition",
+            isActive
+              ? "bg-white text-black font-semibold shadow-sm"
+              : "text-gray-600 hover:text-black",
+          ].join(" ")
+        }
+      >
+        Users
+      </NavLink>
+    )}
+
+  
+  </div>
+
+  {/* Right Section: Icons and User Info */}
+  <div className="flex items-center gap-4 relative">
+    <Search className="w-5 h-5 text-gray-500 hover:text-black cursor-pointer" />
+    <Bell className="w-5 h-5 text-gray-500 hover:text-black cursor-pointer" />
+
+    <div
+      className="w-9 h-9 flex items-center justify-center text-white font-bold bg-gray-700 hover:bg-black rounded-full cursor-pointer transition"
+      onClick={toggleDropdown}
+    >
+      {userInitial || <FaUser className="text-gray-300" />}
+    </div>
+
+    {/* Role text */}
+    {user?.role && (
+      <span className="text-l text-gray-500">{user.role}</span>
+    )}
+
+    {/* Dropdown */}
+    {isDropdownOpen && (
+      <div
+        ref={dropdownRef}
+        className="absolute top-14 right-0 w-52 bg-white border rounded-lg shadow-lg z-50"
+      >
+        <ul className="py-2">
+          <li className="px-4 py-2 text-gray-600 font-medium border-b">
+            Welcome, {user?.name || "User"}
+          </li>
+          <li
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
+            onClick={() => navigate("/profile")}
+          >
+            <FaUser className="text-gray-500" />
+            Profile
+          </li>
+          <li
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
+            onClick={() => navigate("/lockscreen")}
+          >
+            <FaLock className="text-gray-500" />
+            Lock Screen
+          </li>
+          <li
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
+            onClick={() => navigate("/faq")}
+          >
+            <FaQuestionCircle className="text-gray-500" />
+            Help
+          </li>
+          <li
+            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
+            onClick={handleLogout}
+          >
+            <FaSignOutAlt className="text-gray-500" />
+            Log Out
+          </li>
+        </ul>
       </div>
+    )}
 
-      {/* Right Section: Icons */}
-      <div className="flex items-center gap-4 relative">
-        <Search className="w-6 h-6 text-gray-500 cursor-pointer hover:text-black" />
-        <Bell className="w-6 h-6 text-gray-500 cursor-pointer hover:text-black" />
-        <div
-          className="w-9 h-9 flex items-center justify-center text-black font-bold bg-white rounded-full cursor-pointer"
-          onClick={toggleDropdown}
-        >
-          {userInitial ? userInitial : <FaUser className="w-6 h-6 text-gray-500 cursor-pointer hover:text-black" />}
-          </div>
-        {isDropdownOpen && (
-          <div ref={dropdownRef} className="absolute right-0 mt-20 w-48 bg-white border rounded-lg shadow-lg">
-            <ul className="py-1">
-              <li className="px-4 py-2 text-gray-700 pointer-events-none">
-                Welcome, {user?.fullName}
-              </li>
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
-                onClick={() => navigate("/profile")}
-              >
-                <FaUser className="text-gray-500" />
-                Profile
-              </li>
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
-                onClick={() => navigate("/lockscreen")}
-              >
-                <FaLock className="text-gray-500" />
-                Lock Screen
-              </li>
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
-                onClick={() => navigate("/faq")}
-              >
-                <FaQuestionCircle className="text-gray-500" />
-                Help
-              </li>
-              <li
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
-                onClick={handleLogout}
-              >
-                <FaSignOutAlt className="text-gray-500" />
-                Log Out
-              </li>
-            </ul>
-          </div>
-        )}
-         {/* 🔹 Modal for Adding API Credentials */}
-      {showModal && <ConnectAppModal onClose={() => setShowModal(false)} onSave={handleSaveApp} />}
+    {/* Modal for Connect App */}
+    {showModal && <ConnectAppModal onClose={() => setShowModal(false)} onSave={handleSaveApp} />}
+  </div>
+</nav>
 
-
-      </div>
-    </nav>
   );
 }
 

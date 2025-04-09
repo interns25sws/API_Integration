@@ -1,30 +1,28 @@
 import React, { useState } from "react";
 
-const TagSection = ({ tags, setTags, applyTagDiscount }) => {
-  const [tagInput, setTagInput] = useState(""); // Local state for the input field
+const TagSection = ({ tags, setTags, setSelectedTag }) => {
+  const [tagInput, setTagInput] = useState("");
 
   const handleAddTag = () => {
     const newTag = tagInput.trim();
     if (newTag && !tags.includes(newTag)) {
-      setTags([...tags, newTag]);
-      setTagInput(""); // Clear input after adding
-
-      // ✅ Apply discount for the newly added tag
-      applyTagDiscount(newTag);
+      const updatedTags = [...tags, newTag];
+      setTags(updatedTags);
+      setSelectedTag(updatedTags); // ✅ trigger discount recalculation
+      setTagInput(""); // clear input
     }
   };
 
   const handleRemoveTag = (tag) => {
-    setTags(tags.filter(t => t !== tag));
-  
-    // ❌ Remove discount when tag is removed
-    applyTagDiscount(tag, true); // Pass `true` to indicate removal
+    const updatedTags = tags.filter(t => t !== tag);
+    setTags(updatedTags);
+    setSelectedTag(updatedTags); // ✅ update selectedTag for discount useEffect
   };
-  
 
   return (
     <div className="bg-white p-4 rounded-lg shadow">
       <h3 className="text-lg font-semibold mb-2">Tags</h3>
+
       <div className="flex">
         <input
           type="text"
@@ -40,11 +38,20 @@ const TagSection = ({ tags, setTags, applyTagDiscount }) => {
           Add Tag
         </button>
       </div>
+
       <div className="mt-2 flex flex-wrap">
         {tags.map((tag, index) => (
-          <div key={index} className="flex items-center mr-1 bg-blue-200 p-1 rounded-md">
-            <span>{tag}</span>
-            <button onClick={() => handleRemoveTag(tag)} className="text-red-500 hover:text-red-700">✖</button>
+          <div
+            key={index}
+            className="flex items-center mr-2 mb-2 bg-blue-100 text-sm px-2 py-1 rounded"
+          >
+            <span className="mr-1">{tag}</span>
+            <button
+              onClick={() => handleRemoveTag(tag)}
+              className="text-red-600 font-bold"
+            >
+              ✖
+            </button>
           </div>
         ))}
       </div>

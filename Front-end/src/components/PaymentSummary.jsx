@@ -1,6 +1,6 @@
 import React from "react";
 
-const PaymentSummary = ({ subtotal, discount, bulkDiscount, shipping, tax, total, selectedProducts }) => {
+const PaymentSummary = ({ subtotal, discount, bulkDiscount, shipping, total, selectedProducts }) => {
   return (
     <div className="bg-white p-4 rounded-lg shadow-md">
       <h3 className="text-lg font-semibold mb-3">Payment Summary</h3>

@@ -201,7 +201,7 @@ router.post("/create-order", async (req, res) => {
 
     const { line_items, customer, tags, total_price } = req.body;
     const customer_id = customer?.id || null;
-    
+
     if (!Array.isArray(line_items) || line_items.length === 0) {
       console.error("❌ line_items is undefined or empty!");
       return res.status(400).json({ message: "No products selected" });
@@ -214,8 +214,8 @@ router.post("/create-order", async (req, res) => {
       price: parseFloat(p.price).toFixed(2),
     }));
 
-    // Convert tags to Shopify's format
-    const formattedTags = Array.isArray(tags) ? tags.join(", ") : tags;
+    // Convert tags to Shopify's format (Ensure it's an array for matching)
+    const formattedTags = Array.isArray(tags) ? tags : tags.split(",").map(tag => tag.trim());
 
     // 🏷️ Initialize Discount Variables
     let bulkDiscountValue = 0;
@@ -230,16 +230,27 @@ router.post("/create-order", async (req, res) => {
       bulkDiscountValue = parseFloat(bulkDiscount.discountValue);
     }
 
-    // 🔎 Check for Tag Discount (Apply Even If Bulk Exists)
-    if (formattedTags) {
-      const tagDiscount = await Discount.findOne({ selectedTags: { $in: [formattedTags] } });
+    // 🔎 Check for Tag Discounts (Apply all matching tag discounts)
+    if (formattedTags.length > 0) {
+      // Loop through each tag and apply its discount
+      let totalTagDiscountPercentage = 0;
 
-      if (tagDiscount) {
-        console.log(`✅ Tag Discount Found: ${JSON.stringify(tagDiscount, null, 2)}`);
-        tagDiscountValue = parseFloat(tagDiscount.discountValue);
-      } else {
-        console.log("⚠️ No tag-based discount found.");
+      // Loop through the tags to find matching discounts
+      for (let tag of formattedTags) {
+        const tagDiscount = await Discount.findOne({
+          selectedTags: { $in: [tag] } // Match the tag
+        });
+
+        if (tagDiscount) {
+          console.log(`✅ Tag Discount Found for ${tag}: ${JSON.stringify(tagDiscount, null, 2)}`);
+          totalTagDiscountPercentage += parseFloat(tagDiscount.discountValue); // Accumulate the tag discounts
+        } else {
+          console.log(`⚠️ No discount found for tag: ${tag}`);
+        }
       }
+
+      // Apply the total tag discount percentage
+      tagDiscountValue = totalTagDiscountPercentage;
     }
 
     // ✅ Calculate Combined Discount Percentage
@@ -249,7 +260,7 @@ router.post("/create-order", async (req, res) => {
     let finalTotalPrice = total_price * ((100 - combinedDiscountPercentage) / 100);
     if (finalTotalPrice < 0) finalTotalPrice = 0; // Prevent negative total
 
-    // ✅ Single Discount Code for Shopify
+    // ✅ Prepare Discount Codes for Shopify
     let discountCodes = [];
     if (combinedDiscountPercentage > 0) {
       discountCodes.push({
@@ -258,6 +269,7 @@ router.post("/create-order", async (req, res) => {
         type: "percentage",
       });
     }
+
     console.log("🛍️ Incoming customer_id:", customer_id);
 
     // 🛍️ Construct Shopify Order Payload
@@ -270,11 +282,10 @@ router.post("/create-order", async (req, res) => {
         total_discounts: (total_price - finalTotalPrice).toFixed(2),
         discount_codes: discountCodes,
         customer: customer_id
-        ? { id: parseInt(customer_id.split("/").pop(), 10) } // Extract numeric ID
-        : null,
-            },
+          ? { id: parseInt(customer_id.split("/").pop(), 10) } // Extract numeric ID
+          : null,
+      },
     };
-    
 
     console.log("🛍️ Sending Order Payload:", JSON.stringify(shopifyOrder, null, 2));
 
